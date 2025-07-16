@@ -1,0 +1,8 @@
+# linux prereqs
+pyyaml>=6.0
+requests>=2.26
+jsonschema>=4.0
+beautifulsoup4>=4.10
+
+# windows prereqs
+windows-curses>=2.3.1 #uncomment if installing on windows system.

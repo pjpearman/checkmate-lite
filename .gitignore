@@ -1,0 +1,4 @@
+venv/
+logs/
+user_docs/
+__pycache__/
