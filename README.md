@@ -4,9 +4,11 @@ CheckMate-Lite is a lightweight toolkit for working with Security Technical Impl
 
 ## Features
 
+- **Automated STIG Downloads**: Automatically fetch the latest STIG files from DISA's cyber.mil site using JavaScript rendering
 - **Convert STIG XCCDF XML to CKLB**: Easily generate `.cklb` files from official DISA STIG XMLs using `create_cklb.py`.
 - **Inventory Management**: Create and manage inventories of available checklists with `create_inventory.py`.
 - **Terminal User Interface (TUI)**: Review and update checklists in a terminal environment via `tui.py`.
+- **CKLB Version Management**: Compare and upgrade CKLB files between different STIG versions.
 
 ## Directory Structure
 
@@ -63,6 +65,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**First Run Note**: The initial execution will download ~200MB Chromium browser for JavaScript rendering. This is a one-time setup that enables automated STIG downloads from cyber.mil.
+
 Windows Users: Install Python First
 
     Download Python from python.org/downloads.
@@ -95,7 +99,15 @@ A first run of tui.py user_docs/... and subdirectories will be created in the wo
 ## Requirements
 
 - Python 3.7+
-- Standard Python libraries (no external dependencies required for core scripts)
+- Internet connection for automated STIG downloads
+- ~200MB disk space for first-run Chromium download (one-time setup)
+
+### Dependencies
+- `requests-html` for JavaScript execution and web scraping
+- `beautifulsoup4` for HTML parsing
+- `jsonschema` for CKLB validation
+- `pyyaml` for configuration files
+- Standard Python libraries
 
 ## License
 

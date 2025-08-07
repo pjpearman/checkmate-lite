@@ -18,7 +18,7 @@ import json
 from datetime import datetime
 
 # URL of the page containing the table
-URL = "https://public.cyber.mil/stigs/downloads/"  # Change this to your target URL
+URL = "https://www.cyber.mil/stigs/downloads"  # Change this to your target URL
 # Directory to save downloaded files
 DOWNLOAD_DIR = "tmp"
 
@@ -40,33 +40,109 @@ logging.basicConfig(
 )
 
 def fetch_page(url):
-    """Fetch the webpage content."""
+    """Fetch the webpage content with JavaScript rendering support."""
+    cert_path = "./certs/www-cyber-mil-full-chain.crt"
+    
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        from requests_html import HTMLSession
+        
+        # Create session with custom certificate verification
+        session = HTMLSession()
+        session.verify = cert_path
+        
+        # Get page and render JavaScript
+        response = session.get(url, headers=HEADERS, timeout=30)
         response.raise_for_status()
-        logging.info(f"Fetched page: {url}")
+        
+        # Execute JavaScript to load dynamic content
+        logging.info(f"Rendering JavaScript for: {url}")
+        response.html.render(timeout=30, wait=5, sleep=2)
+        
+        logging.info(f"Fetched and rendered page: {url}")
+        return response.html.html
+        
+    except ImportError:
+        # Fallback to regular requests if requests-html not available
+        logging.warning("requests-html not installed, falling back to basic requests")
+        response = requests.get(url, headers=HEADERS, timeout=10, verify=cert_path)
+        response.raise_for_status()
+        logging.info(f"Fetched page (no JS): {url}")
         return response.text
     except Exception as e:
         logging.error(f"Failed to fetch page {url}: {e}")
         raise
 
 def parse_table_for_links(html_content):
-    """Parse the page and extract file links (only .zip files)."""
+    """Parse the page and extract file links (only .zip files) with JS-rendered content."""
     soup = BeautifulSoup(html_content, "html.parser")
     file_links = []
-    # Look for all <a> tags with hrefs that look like downloadable files
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
-        # Only consider links to .zip files
-        if href.lower().endswith(".zip"):
-            file_url = urljoin(URL, href)
-            file_name = os.path.basename(href)
-            file_links.append((file_name, file_url))
-            logging.info(f"Found file link: {file_name} -> {file_url}")
+    
+    # Method 1: Look for data-link attributes (post-JS execution)
+    for element in soup.find_all(attrs={"data-link": True}):
+        data_link = element["data-link"]
+        if data_link.lower().endswith(".zip"):
+            file_name = os.path.basename(data_link)
+            file_links.append((file_name, data_link))
+            logging.info(f"Found file (data-link): {file_name} -> {data_link}")
+    
+    # Method 2: Look for download-related buttons/links with onclick handlers
     if not file_links:
-        msg = "Warning: No downloadable file links found on the page."
+        for element in soup.find_all(['button', 'a', 'div'], {'onclick': True}):
+            onclick = element.get('onclick', '')
+            if '.zip' in onclick.lower():
+                import re
+                url_match = re.search(r'https?://[^\s"\'>]+\.zip', onclick)
+                if url_match:
+                    url = url_match.group(0)
+                    file_name = os.path.basename(url)
+                    file_links.append((file_name, url))
+                    logging.info(f"Found file (onclick): {file_name} -> {url}")
+    
+    # Method 3: Look for any .zip URLs in rendered content (broader search)
+    if not file_links:
+        import re
+        zip_urls = re.findall(r'https?://[^\s"\'<>]+\.zip', html_content)
+        for url in zip_urls:
+            file_name = os.path.basename(url)
+            file_links.append((file_name, url))
+            logging.info(f"Found file (regex): {file_name} -> {url}")
+    
+    # Method 4: Traditional href links (fallback)
+    if not file_links:
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            if href.lower().endswith(".zip"):
+                file_url = urljoin(URL, href)
+                file_name = os.path.basename(href)
+                file_links.append((file_name, file_url))
+                logging.info(f"Found file (href): {file_name} -> {file_url}")
+    
+    # Filter to only STIG-related files if we found any
+    if file_links:
+        stig_files = []
+        for name, url in file_links:
+            if any(keyword in name.lower() or keyword in url.lower() 
+                   for keyword in ['stig', 'u_', 'disa', 'security']):
+                stig_files.append((name, url))
+        if stig_files:
+            file_links = stig_files
+            logging.info(f"Filtered to {len(stig_files)} STIG-related files")
+    
+    if not file_links:
+        msg = """Warning: No download links found after JavaScript rendering.
+
+The cyber.mil site may have changed its structure or requires additional
+interaction to load content. 
+
+WORKAROUND: 
+1. Visit https://www.cyber.mil/stigs/downloads manually
+2. Download STIG .zip files to the 'tmp/' directory  
+3. Use 'Create CKLB' menu to convert them"""
         print(msg)
-        logging.warning(msg)
+        logging.warning("No download links found after JS rendering")
+    else:
+        logging.info(f"Found {len(file_links)} download links")
+    
     return file_links
 
 def download_file(file_url, file_name):
@@ -84,7 +160,7 @@ def download_file(file_url, file_name):
         return
 
     try:
-        with requests.get(file_url, headers=HEADERS, stream=True, timeout=10) as response:
+        with requests.get(file_url, headers=HEADERS, stream=True, timeout=10, verify="./certs/www-cyber-mil-full-chain.crt") as response:
             response.raise_for_status()
             with open(dest_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):

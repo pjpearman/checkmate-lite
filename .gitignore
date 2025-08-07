@@ -2,3 +2,4 @@ venv/
 logs/
 user_docs/
 __pycache__/
+CLAUDE.md
