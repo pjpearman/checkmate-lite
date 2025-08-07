@@ -18,7 +18,7 @@ import json
 from datetime import datetime
 
 # URL of the page containing the table
-URL = "https://public.cyber.mil/stigs/downloads/"  # Change this to your target URL
+URL = "https://www.cyber.mil/stigs/downloads"  # Change this to your target URL
 # Directory to save downloaded files
 DOWNLOAD_DIR = "tmp"
 
@@ -42,7 +42,7 @@ logging.basicConfig(
 def fetch_page(url):
     """Fetch the webpage content."""
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=10, verify="./certs/www-cyber-mil-full-chain.crt")
         response.raise_for_status()
         logging.info(f"Fetched page: {url}")
         return response.text
@@ -84,7 +84,7 @@ def download_file(file_url, file_name):
         return
 
     try:
-        with requests.get(file_url, headers=HEADERS, stream=True, timeout=10) as response:
+        with requests.get(file_url, headers=HEADERS, stream=True, timeout=10, verify="./certs/www-cyber-mil-full-chain.crt") as response:
             response.raise_for_status()
             with open(dest_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
