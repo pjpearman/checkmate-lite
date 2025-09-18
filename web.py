@@ -73,66 +73,65 @@ def fetch_page(url):
         raise
 
 def parse_table_for_links(html_content):
-    """Parse the page and extract file links (only .zip files) with JS-rendered content."""
+    """Parse the downloads table and return STIG checklist download links."""
+
+    def _is_stig_checklist(value):
+        return bool(value) and value.strip().lower() == "stig checklist"
+
     soup = BeautifulSoup(html_content, "html.parser")
     file_links = []
-    
-    # Method 1: Look for data-link attributes (post-JS execution)
-    for element in soup.find_all(attrs={"data-link": True}):
-        data_link = element["data-link"]
-        if data_link.lower().endswith(".zip"):
-            file_name = os.path.basename(data_link)
-            file_links.append((file_name, data_link))
-            logging.info(f"Found file (data-link): {file_name} -> {data_link}")
-    
-    # Method 2: Look for download-related buttons/links with onclick handlers
-    if not file_links:
-        for element in soup.find_all(['button', 'a', 'div'], {'onclick': True}):
-            onclick = element.get('onclick', '')
-            if '.zip' in onclick.lower():
-                import re
-                url_match = re.search(r'https?://[^\s"\'>]+\.zip', onclick)
-                if url_match:
-                    url = url_match.group(0)
-                    file_name = os.path.basename(url)
-                    file_links.append((file_name, url))
-                    logging.info(f"Found file (onclick): {file_name} -> {url}")
-    
-    # Method 3: Look for any .zip URLs in rendered content (broader search)
-    if not file_links:
-        import re
-        zip_urls = re.findall(r'https?://[^\s"\'<>]+\.zip', html_content)
-        for url in zip_urls:
-            file_name = os.path.basename(url)
-            file_links.append((file_name, url))
-            logging.info(f"Found file (regex): {file_name} -> {url}")
-    
-    # Method 4: Traditional href links (fallback)
-    if not file_links:
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-            if href.lower().endswith(".zip"):
-                file_url = urljoin(URL, href)
-                file_name = os.path.basename(href)
-                file_links.append((file_name, file_url))
-                logging.info(f"Found file (href): {file_name} -> {file_url}")
-    
-    # Filter to only STIG-related files if we found any
+    seen_links = set()
+    release_metadata = {}
+
+    for table in soup.select("table.views-table"):
+        for row in table.find_all("tr"):
+            # Skip header rows that don't contain table data
+            if not row.find_all("td"):
+                continue
+
+            doc_type_cell = row.find(class_="views-field-field-document-type")
+            doc_type_text = doc_type_cell.get_text(strip=True) if doc_type_cell else ""
+
+            download_element = row.find(attrs={"data-download-link": True})
+            if not download_element:
+                continue
+
+            button_file_type = download_element.get("data-file-type", "")
+            if not (_is_stig_checklist(button_file_type) or _is_stig_checklist(doc_type_text)):
+                continue
+
+            download_path = (download_element.get("data-download-link") or "").strip()
+            if not download_path:
+                continue
+
+            file_name = (download_element.get("data-file-name") or "").strip()
+            if not file_name:
+                file_name = os.path.basename(download_path.rstrip("/"))
+            if not file_name:
+                continue
+
+            download_url = urljoin(URL, download_path)
+            link_info = (file_name, download_url)
+
+            if link_info in seen_links:
+                continue
+
+            seen_links.add(link_info)
+            file_links.append(link_info)
+
+            release = download_element.get("data-release") or download_element.get("data-version")
+            if release:
+                release_metadata[link_info] = release
+
     if file_links:
-        stig_files = []
-        for name, url in file_links:
-            if any(keyword in name.lower() or keyword in url.lower() 
-                   for keyword in ['stig', 'u_', 'disa', 'security']):
-                stig_files.append((name, url))
-        if stig_files:
-            file_links = stig_files
-            logging.info(f"Filtered to {len(stig_files)} STIG-related files")
-    
-    if not file_links:
+        logging.info(f"Found {len(file_links)} STIG checklist download links")
+        if release_metadata:
+            logging.debug("Captured release metadata for %d checklists", len(release_metadata))
+    else:
         msg = """Warning: No download links found after JavaScript rendering.
 
 The cyber.mil site may have changed its structure or requires additional
-interaction to load content. 
+interaction to load content.
 
 WORKAROUND: 
 1. Visit https://www.cyber.mil/stigs/downloads manually
@@ -140,9 +139,7 @@ WORKAROUND:
 3. Use 'Create CKLB' menu to convert them"""
         print(msg)
         logging.warning("No download links found after JS rendering")
-    else:
-        logging.info(f"Found {len(file_links)} download links")
-    
+
     return file_links
 
 def download_file(file_url, file_name):
