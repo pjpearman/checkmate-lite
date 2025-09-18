@@ -1,3 +1,5 @@
+# ⚠️ Warning: Another round of changes on the DISA STIG Library website impacted the ability to download new checklists. Working to identify and implement a solution. 
+
 # CheckMate-Lite
 
 CheckMate-Lite is a lightweight toolkit for working with Security Technical Implementation Guide (STIG) content, focusing on the creation, management, and review of checklist bundles (CKLB files). It provides a simple menu driven terminal user interface for interacting with STIG checklists.
