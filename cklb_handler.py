@@ -177,7 +177,7 @@ def upgrade_cklbs_no_edit_tui(stdscr):
     import curses
     import textwrap
     from tui import browse_and_select_cklb_files
-    from web import fetch_page, parse_table_for_links, download_file, URL
+    from web import collect_all_file_links, download_file
     from create_cklb import convert_xccdf_zip_to_cklb
     updated_dir = os.path.join("user_docs", "cklb_updated")
     os.makedirs(updated_dir, exist_ok=True)
@@ -248,8 +248,7 @@ def upgrade_cklbs_no_edit_tui(stdscr):
                 stdscr.addstr(0, 0, "Fetching available STIGs from website...")
                 stdscr.refresh()
                 try:
-                    html_content = fetch_page(URL)
-                    file_links = parse_table_for_links(html_content)
+                    file_links = collect_all_file_links()
                 except Exception as e:
                     stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
                     stdscr.refresh()
@@ -359,7 +358,7 @@ def upgrade_cklbs_answer_tui(stdscr):
     import curses
     import textwrap
     from tui import browse_and_select_cklb_files
-    from web import fetch_page, parse_table_for_links, download_file, URL
+    from web import collect_all_file_links, download_file
     from create_cklb import convert_xccdf_zip_to_cklb
     updated_dir = os.path.join("user_docs", "cklb_updated")
     os.makedirs(updated_dir, exist_ok=True)
@@ -429,8 +428,7 @@ def upgrade_cklbs_answer_tui(stdscr):
                 stdscr.addstr(0, 0, "Fetching available STIGs from website...")
                 stdscr.refresh()
                 try:
-                    html_content = fetch_page(URL)
-                    file_links = parse_table_for_links(html_content)
+                    file_links = collect_all_file_links()
                 except Exception as e:
                     stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
                     stdscr.refresh()

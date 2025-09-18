@@ -11,7 +11,7 @@ Make sure to:
 
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 import os
 import logging
 import json
@@ -142,8 +142,81 @@ WORKAROUND:
         logging.warning("No download links found after JS rendering")
     else:
         logging.info(f"Found {len(file_links)} download links")
-    
+
     return file_links
+
+
+def _find_next_page_url(html_content, current_url):
+    """Return the URL for the next page in the DISA downloads pagination.
+
+    The downloads table renders a ``<nav class="usa-pagination">`` element with a
+    ``rel="next"`` anchor when additional pages exist.  That explicit hint is the
+    most reliable way to discover the next page and mirrors how the browser
+    advances through the listing.  Some archived copies of the page omit the
+    navigation widget, so we fall back to incrementing the ``?page=`` query
+    parameter if it is present in the current URL.
+    """
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    pagination = soup.find("nav", class_="usa-pagination")
+    if pagination:
+        next_link = pagination.find("a", attrs={"rel": "next"})
+        if next_link and next_link.get("href"):
+            return urljoin(current_url, next_link["href"])
+
+    parsed = urlparse(current_url)
+    query_params = parse_qs(parsed.query)
+    if "page" in query_params:
+        try:
+            current_page = int(query_params["page"][-1])
+        except ValueError:
+            return None
+        query_params["page"][-1] = str(current_page + 1)
+        new_query = urlencode(query_params, doseq=True)
+        return urlunparse(parsed._replace(query=new_query))
+
+    return None
+
+
+def collect_all_file_links(start_url: str = URL):
+    """Walk the paginated downloads list and return unique ``(file_name, url)`` pairs.
+
+    Pagination is driven by the USA.gov design-system widget inspected in the
+    live markup (``<nav class="usa-pagination">``).  We repeatedly follow the
+    ``rel="next"`` link rendered by that widget and gracefully fall back to
+    incrementing the ``page`` query parameter when the widget is missing.  The
+    crawl stops once a page returns no checklist rows, mirroring the behaviour
+    of the interactive site.  Duplicate entries are ignored to guard against
+    transient pagination glitches.
+    """
+
+    aggregated = []
+    seen = set()
+    visited_urls = set()
+    next_url = start_url
+
+    while next_url and next_url not in visited_urls:
+        logging.info(f"Fetching paginated page: {next_url}")
+        html_content = fetch_page(next_url)
+        page_links = parse_table_for_links(html_content)
+
+        if not page_links:
+            logging.info("No checklist rows found on page; stopping pagination crawl.")
+            break
+
+        for file_name, file_url in page_links:
+            key = (file_name, file_url)
+            if key not in seen:
+                aggregated.append(key)
+                seen.add(key)
+
+        visited_urls.add(next_url)
+        potential_next = _find_next_page_url(html_content, next_url)
+        if not potential_next or potential_next in visited_urls:
+            break
+        next_url = potential_next
+
+    return aggregated
 
 def download_file(file_url, file_name):
     """Download the file and save it to DOWNLOAD_DIR."""
@@ -176,9 +249,8 @@ def download_file(file_url, file_name):
 def main():
     logging.info("Downloader script started.")
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
-        
+        file_links = collect_all_file_links()
+
         for file_name, file_url in file_links:
             # TODO: Add logic to determine if this file is "new" (e.g., by timestamp or tracking a database)
             # For now, download every file found:

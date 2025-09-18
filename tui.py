@@ -38,7 +38,7 @@ from input_validation import (
     get_safe_path
 )
 from log_config import setup_logging, get_operation_logger
-from web import fetch_page, parse_table_for_links, download_file, URL, HEADERS
+from web import collect_all_file_links, download_file
 from cklb_handler import (
     compare_cklb_versions, upgrade_cklb_no_edit,
     upgrade_cklbs_no_edit_tui, upgrade_cklbs_answer_tui
@@ -91,8 +91,7 @@ def download_files(stdscr):
     while True:
         show_progress(stdscr, "Fetching webpage and parsing file links...")
         try:
-            html_content = fetch_page(URL)
-            file_links = parse_table_for_links(html_content)
+            file_links = collect_all_file_links()
         except Exception as e:
             clean_screen(stdscr)
             draw_status_bar(stdscr, f"Error: {e}. Press any key to return.", "error")
@@ -201,8 +200,7 @@ def create_inventory_file_tui(stdscr):
     
     show_progress(stdscr, "Fetching webpage and parsing file links...")
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
+        file_links = collect_all_file_links()
     except Exception as e:
         clean_screen(stdscr)
         draw_status_bar(stdscr, f"Error: {e}. Press any key to return.", "error")
@@ -644,7 +642,7 @@ def automatic_cklb_library_update_tui(stdscr):
     """
     import os, json, re, logging
     from datetime import datetime
-    from web import fetch_page, parse_table_for_links, download_file, URL
+    from web import collect_all_file_links, download_file
     from create_cklb import convert_xccdf_zip_to_cklb
     import shutil
     # Ensure log dir exists
@@ -716,8 +714,7 @@ def automatic_cklb_library_update_tui(stdscr):
     stdscr.addstr(0, 0, "Fetching available STIGs from website...")
     stdscr.refresh()
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
+        file_links = collect_all_file_links()
     except Exception as e:
         stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
         stdscr.refresh()
