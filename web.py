@@ -18,7 +18,7 @@ import json
 from datetime import datetime
 
 # URL of the page containing the table
-URL = "https://www.cyber.mil/stigs/downloads"  # Change this to your target URL
+URL = "https://public.cyber.mil/stigs/downloads/"  # Change this to your target URL
 # Directory to save downloaded files
 DOWNLOAD_DIR = "tmp"
 
@@ -135,7 +135,7 @@ The cyber.mil site may have changed its structure or requires additional
 interaction to load content. 
 
 WORKAROUND: 
-1. Visit https://www.cyber.mil/stigs/downloads manually
+1. Visit https://public.cyber.mil/stigs/downloads/ manually
 2. Download STIG .zip files to the 'tmp/' directory  
 3. Use 'Create CKLB' menu to convert them"""
         print(msg)

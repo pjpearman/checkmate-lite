@@ -6,7 +6,7 @@ CheckMate-Lite is a lightweight toolkit for working with Security Technical Impl
 
 ## Features
 
-- **Automated STIG Downloads**: Automatically fetch the latest STIG files from DISA's cyber.mil site using JavaScript rendering
+- **Automated STIG Downloads**: Automatically fetch the latest STIG files from DISA's public.cyber.mil site using JavaScript rendering
 - **Convert STIG XCCDF XML to CKLB**: Easily generate `.cklb` files from official DISA STIG XMLs using `create_cklb.py`.
 - **Inventory Management**: Create and manage inventories of available checklists with `create_inventory.py`.
 - **Terminal User Interface (TUI)**: Review and update checklists in a terminal environment via `tui.py`.
@@ -65,9 +65,10 @@ Create a python environment
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+playwright install chromium
 ```
 
-**First Run Note**: The initial execution will download ~200MB Chromium browser for JavaScript rendering. This is a one-time setup that enables automated STIG downloads from cyber.mil.
+**First Run Note**: Running `playwright install chromium` (or the first automated scrape) will download ~200MB of browser assets for JavaScript rendering. This is a one-time setup that enables automated STIG downloads from public.cyber.mil.
 
 Windows Users: Install Python First
 
@@ -81,6 +82,7 @@ Windows Users: Install Python First
 python3 -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
+playwright install chromium
 ```
 
 ### 3. Terminal User Interface
@@ -106,6 +108,7 @@ A first run of tui.py user_docs/... and subdirectories will be created in the wo
 
 ### Dependencies
 - `requests-html` for JavaScript execution and web scraping
+- `playwright` for browser automation and XHR inspection
 - `beautifulsoup4` for HTML parsing
 - `jsonschema` for CKLB validation
 - `pyyaml` for configuration files
