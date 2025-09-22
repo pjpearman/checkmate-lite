@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
 logger = logging.getLogger(__name__)
@@ -220,4 +220,21 @@ def scrape_stigs(mode: str = "all", headful: bool = False, base_url: str = PUBLI
     return entries
 
 
-__all__ = ["scrape_stigs"]
+def scrape_stig_file_links(
+    mode: str = "all",
+    headful: bool = False,
+    base_url: str = PUBLIC_CYBER_MIL_URL,
+) -> List[Tuple[str, str]]:
+    """Return (file_name, url) tuples from :func:`scrape_stigs` results."""
+
+    items = scrape_stigs(mode=mode, headful=headful, base_url=base_url)
+    file_links: List[Tuple[str, str]] = []
+    for item in items:
+        file_name = item.get("FileName")
+        url = item.get("URL")
+        if file_name and url:
+            file_links.append((file_name, url))
+    return file_links
+
+
+__all__ = ["scrape_stigs", "scrape_stig_file_links"]

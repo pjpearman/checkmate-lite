@@ -45,7 +45,7 @@ from cklb_handler import (
 )
 from create_cklb import convert_xccdf_zip_to_cklb
 from create_inventory import generate_inventory
-from stig_scraper import scrape_stigs
+from stig_scraper import scrape_stig_file_links
 
 # Setup logging
 logger = setup_logging(app_name='tui')
@@ -66,14 +66,9 @@ FUNCTIONS = {
 
 
 def fetch_stig_file_links(mode: str = "all") -> List[Tuple[str, str]]:
-    """Return a list of (file_name, url) pairs from the Playwright scraper."""
-    scraped_items = scrape_stigs(mode=mode)
-    file_links: List[Tuple[str, str]] = []
-    for item in scraped_items:
-        file_name = item.get("FileName")
-        url = item.get("URL")
-        if file_name and url:
-            file_links.append((file_name, url))
+    """Return (file_name, url) pairs from the shared STIG scraper."""
+    file_links = scrape_stig_file_links(mode=mode)
+    logger.debug("Fetched %d STIG file links for mode=%s", len(file_links), mode)
     return file_links
 
 def draw_menu(stdscr, selected_idx):

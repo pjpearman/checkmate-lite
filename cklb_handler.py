@@ -9,7 +9,9 @@ import re
 import curses
 from typing import List, Tuple
 
-from stig_scraper import scrape_stigs
+from stig_scraper import scrape_stig_file_links
+
+fetch_stig_file_links = scrape_stig_file_links
 from web import download_file
 
 def ensure_discussion_field(rules: list[dict]) -> list[dict]:
@@ -22,16 +24,6 @@ def ensure_discussion_field(rules: list[dict]) -> list[dict]:
     return rules
 
 
-def fetch_stig_file_links(mode: str = "all") -> List[Tuple[str, str]]:
-    """Return (file_name, url) pairs from the Playwright STIG scraper."""
-    scraped_items = scrape_stigs(mode=mode)
-    file_links: List[Tuple[str, str]] = []
-    for item in scraped_items:
-        file_name = item.get("FileName")
-        url = item.get("URL")
-        if file_name and url:
-            file_links.append((file_name, url))
-    return file_links
 
 def import_cklbs(selected_files: list[str], dest_dir: str = None) -> list[tuple[str, str]]:
     """
