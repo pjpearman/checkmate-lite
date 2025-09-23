@@ -12,8 +12,18 @@ logger = logging.getLogger(__name__)
 
 PUBLIC_CYBER_MIL_URL = "https://public.cyber.mil/stigs/downloads/"
 
+TARGET_ZIP_SUFFIXES = ("stig.zip", "srg.zip")
+
 # Match absolute and protocol-relative URLs that end with .zip
 ZIP_URL_PATTERN = re.compile(r"(?:(?:https?:)?//|/)[^\s\"'<>]+?\.zip", re.IGNORECASE)
+
+
+def _is_target_zip(value: str) -> bool:
+    """Return True when *value* ends with the desired STIG/SRG archive suffix."""
+
+    if not value:
+        return False
+    return value.lower().endswith(TARGET_ZIP_SUFFIXES)
 
 
 def _iter_zip_candidates(data: object) -> Iterable[str]:
@@ -62,7 +72,11 @@ def _categorize(file_name: str) -> str:
     if lower_name.endswith(".xml.zip") or "_xccdf" in lower_name:
         return "benchmark"
     if lower_name.endswith("_stig.zip") or "_stig_" in lower_name:
-        return "benchmark"
+        # Manual STIG packages contain checklist data even though they share the
+        # common *_STIG.zip suffix. Treat them as checklists so that consumers
+        # such as the download UI and inventory generator receive the same set
+        # of candidate archives.
+        return "checklist"
     return "unknown"
 
 
@@ -113,7 +127,7 @@ def scrape_stigs(mode: str = "all", headful: bool = False, base_url: str = PUBLI
         if not url or not url.lower().endswith(".zip"):
             return
         file_name = os.path.basename(urlsplit(url).path)
-        if not file_name:
+        if not file_name or not _is_target_zip(file_name):
             return
         if url not in entries_by_url:
             logger.debug("Captured %s via %s", file_name, source)
@@ -213,7 +227,10 @@ def scrape_stigs(mode: str = "all", headful: bool = False, base_url: str = PUBLI
             except Exception:
                 logger.debug("Error closing Playwright browser", exc_info=True)
 
-    entries: List[Dict[str, str]] = sorted(entries_by_url.values(), key=lambda item: item["FileName"].lower())
+    entries: List[Dict[str, str]] = [
+        item for item in entries_by_url.values() if _is_target_zip(item.get("FileName", ""))
+    ]
+    entries.sort(key=lambda item: item["FileName"].lower())
     entries = _filter_by_mode(entries, normalized_mode)
     if errors and not entries:
         raise RuntimeError(errors[0]["Error"])
