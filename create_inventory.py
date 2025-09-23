@@ -3,6 +3,8 @@ import json
 import logging
 import re
 
+from stig_scraper import scrape_stigs
+
 # === Inventory Generator ===
 
 def extract_version_release(file_name):

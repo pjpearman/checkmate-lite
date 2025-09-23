@@ -7,6 +7,12 @@ import random
 import string
 import re
 import curses
+from typing import List, Tuple
+
+from stig_scraper import scrape_stig_file_links
+
+fetch_stig_file_links = scrape_stig_file_links
+from web import download_file
 
 def ensure_discussion_field(rules: list[dict]) -> list[dict]:
     """
@@ -16,6 +22,8 @@ def ensure_discussion_field(rules: list[dict]) -> list[dict]:
         if 'discussion' not in rule:
             rule['discussion'] = ''
     return rules
+
+
 
 def import_cklbs(selected_files: list[str], dest_dir: str = None) -> list[tuple[str, str]]:
     """
@@ -177,7 +185,6 @@ def upgrade_cklbs_no_edit_tui(stdscr):
     import curses
     import textwrap
     from tui import browse_and_select_cklb_files
-    from web import fetch_page, parse_table_for_links, download_file, URL
     from create_cklb import convert_xccdf_zip_to_cklb
     updated_dir = os.path.join("user_docs", "cklb_updated")
     os.makedirs(updated_dir, exist_ok=True)
@@ -245,13 +252,13 @@ def upgrade_cklbs_no_edit_tui(stdscr):
                         continue
                 # --- Scrape website for available STIGs ---
                 stdscr.clear()
-                stdscr.addstr(0, 0, "Fetching available STIGs from website...")
+                stdscr.addstr(0, 0, "Scraping available STIGs...")
                 stdscr.refresh()
                 try:
-                    html_content = fetch_page(URL)
-                    file_links = parse_table_for_links(html_content)
+                    file_links = fetch_stig_file_links(mode="checklist")
                 except Exception as e:
-                    stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
+                    logging.error("Failed to scrape STIG catalog: %s", e, exc_info=True)
+                    stdscr.addstr(2, 0, f"Error scraping STIG catalog: {e}. Press any key to return.")
                     stdscr.refresh()
                     stdscr.getch()
                     return
@@ -359,7 +366,6 @@ def upgrade_cklbs_answer_tui(stdscr):
     import curses
     import textwrap
     from tui import browse_and_select_cklb_files
-    from web import fetch_page, parse_table_for_links, download_file, URL
     from create_cklb import convert_xccdf_zip_to_cklb
     updated_dir = os.path.join("user_docs", "cklb_updated")
     os.makedirs(updated_dir, exist_ok=True)
@@ -426,13 +432,13 @@ def upgrade_cklbs_answer_tui(stdscr):
                         continue
                 # --- Scrape website for available STIGs ---
                 stdscr.clear()
-                stdscr.addstr(0, 0, "Fetching available STIGs from website...")
+                stdscr.addstr(0, 0, "Scraping available STIGs...")
                 stdscr.refresh()
                 try:
-                    html_content = fetch_page(URL)
-                    file_links = parse_table_for_links(html_content)
+                    file_links = fetch_stig_file_links(mode="checklist")
                 except Exception as e:
-                    stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
+                    logging.error("Failed to scrape STIG catalog: %s", e, exc_info=True)
+                    stdscr.addstr(2, 0, f"Error scraping STIG catalog: {e}. Press any key to return.")
                     stdscr.refresh()
                     stdscr.getch()
                     return
