@@ -72,7 +72,11 @@ def _categorize(file_name: str) -> str:
     if lower_name.endswith(".xml.zip") or "_xccdf" in lower_name:
         return "benchmark"
     if lower_name.endswith("_stig.zip") or "_stig_" in lower_name:
-        return "benchmark"
+        # Manual STIG packages contain checklist data even though they share the
+        # common *_STIG.zip suffix. Treat them as checklists so that consumers
+        # such as the download UI and inventory generator receive the same set
+        # of candidate archives.
+        return "checklist"
     return "unknown"
 
 
