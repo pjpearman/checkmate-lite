@@ -9,16 +9,18 @@ Make sure to:
 - Run `pip install requests beautifulsoup4` before executing this script.
 """
 
+import logging
+import os
+from datetime import datetime
+from urllib.parse import urljoin
+
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
-import os
-import logging
-import json
-from datetime import datetime
+
+from stig_scraper import scrape_stig_file_links
 
 # URL of the page containing the table
-URL = "https://www.cyber.mil/stigs/downloads"  # Change this to your target URL
+URL = "https://public.cyber.mil/stigs/downloads/"  # Change this to your target URL
 # Directory to save downloaded files
 DOWNLOAD_DIR = "tmp"
 
@@ -135,7 +137,7 @@ The cyber.mil site may have changed its structure or requires additional
 interaction to load content. 
 
 WORKAROUND: 
-1. Visit https://www.cyber.mil/stigs/downloads manually
+1. Visit https://public.cyber.mil/stigs/downloads/ manually
 2. Download STIG .zip files to the 'tmp/' directory  
 3. Use 'Create CKLB' menu to convert them"""
         print(msg)
@@ -176,14 +178,22 @@ def download_file(file_url, file_name):
 def main():
     logging.info("Downloader script started.")
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
-        
+        try:
+            file_links = scrape_stig_file_links()
+            logging.info("Captured %d STIG download links via Playwright scraper", len(file_links))
+        except Exception as playwright_error:
+            logging.warning(
+                "Playwright scraper failed (%s); falling back to legacy HTML parser.",
+                playwright_error,
+            )
+            html_content = fetch_page(URL)
+            file_links = parse_table_for_links(html_content)
+
         for file_name, file_url in file_links:
             # TODO: Add logic to determine if this file is "new" (e.g., by timestamp or tracking a database)
             # For now, download every file found:
             download_file(file_url, file_name)
-        
+
         logging.info("Downloader script finished.")
     except Exception as e:
         logging.error(f"Script terminated with error: {e}")

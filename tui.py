@@ -38,13 +38,14 @@ from input_validation import (
     get_safe_path
 )
 from log_config import setup_logging, get_operation_logger
-from web import fetch_page, parse_table_for_links, download_file, URL, HEADERS
+from web import download_file
 from cklb_handler import (
     compare_cklb_versions, upgrade_cklb_no_edit,
     upgrade_cklbs_no_edit_tui, upgrade_cklbs_answer_tui
 )
 from create_cklb import convert_xccdf_zip_to_cklb
 from create_inventory import generate_inventory
+from stig_scraper import scrape_stig_file_links
 
 # Setup logging
 logger = setup_logging(app_name='tui')
@@ -62,6 +63,13 @@ FUNCTIONS = {
     # Example: "Set Download Directory": "set_download_dir",
     # Example: "Toggle File Types": "toggle_file_types",
 }
+
+
+def fetch_stig_file_links(mode: str = "all") -> List[Tuple[str, str]]:
+    """Return (file_name, url) pairs from the shared STIG scraper."""
+    file_links = scrape_stig_file_links(mode=mode)
+    logger.debug("Fetched %d STIG file links for mode=%s", len(file_links), mode)
+    return file_links
 
 def draw_menu(stdscr, selected_idx):
     """Display the main menu with professional styling."""
@@ -83,19 +91,22 @@ def download_files(stdscr):
     if not download_mode:
         return  # Cancelled
     import shutil
-    from web import download_file
-    from create_cklb import convert_xccdf_zip_to_cklb
     zip_dir = os.path.join("user_docs", "zip_files")
     cklb_dir = os.path.join("user_docs", "cklb_new")
     tmp_dir = "tmp"
     while True:
-        show_progress(stdscr, "Fetching webpage and parsing file links...")
+        show_progress(stdscr, "Scraping STIG catalog...")
+        scrape_mode = "checklist" if download_mode == "cklb" else "all"
         try:
-            html_content = fetch_page(URL)
-            file_links = parse_table_for_links(html_content)
+            file_links = fetch_stig_file_links(mode=scrape_mode)
         except Exception as e:
+            logger.error("Failed to scrape STIG catalog: %s", e, exc_info=True)
             clean_screen(stdscr)
-            draw_status_bar(stdscr, f"Error: {e}. Press any key to return.", "error")
+            draw_status_bar(
+                stdscr,
+                f"Error scraping STIG catalog: {e}. Press any key to return.",
+                "error",
+            )
             stdscr.refresh()
             stdscr.getch()
             return
@@ -199,13 +210,17 @@ def create_inventory_file_tui(stdscr):
     import curses.textpad
     from create_inventory import generate_inventory
     
-    show_progress(stdscr, "Fetching webpage and parsing file links...")
+    show_progress(stdscr, "Scraping STIG catalog...")
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
+        file_links = fetch_stig_file_links()
     except Exception as e:
+        logger.error("Failed to scrape STIG catalog: %s", e, exc_info=True)
         clean_screen(stdscr)
-        draw_status_bar(stdscr, f"Error: {e}. Press any key to return.", "error")
+        draw_status_bar(
+            stdscr,
+            f"Error scraping STIG catalog: {e}. Press any key to return.",
+            "error",
+        )
         stdscr.refresh()
         stdscr.getch()
         return
@@ -459,7 +474,6 @@ def download_selected_inventory_tui(stdscr):
             mode = prompt_download_mode_tui(stdscr)
             if mode is None:
                 return
-            from web import download_file
             if mode == 'zip':
                 if not os.path.exists(zip_dir):
                     os.makedirs(zip_dir, mode=0o700)
@@ -644,8 +658,6 @@ def automatic_cklb_library_update_tui(stdscr):
     """
     import os, json, re, logging
     from datetime import datetime
-    from web import fetch_page, parse_table_for_links, download_file, URL
-    from create_cklb import convert_xccdf_zip_to_cklb
     import shutil
     # Ensure log dir exists
     os.makedirs("logs", exist_ok=True)
@@ -716,10 +728,10 @@ def automatic_cklb_library_update_tui(stdscr):
     stdscr.addstr(0, 0, "Fetching available STIGs from website...")
     stdscr.refresh()
     try:
-        html_content = fetch_page(URL)
-        file_links = parse_table_for_links(html_content)
+        file_links = fetch_stig_file_links()
     except Exception as e:
-        stdscr.addstr(2, 0, f"Error fetching website: {e}. Press any key to return.")
+        logger.error("Failed to scrape STIG catalog: %s", e, exc_info=True)
+        stdscr.addstr(2, 0, f"Error scraping STIG catalog: {e}. Press any key to return.")
         stdscr.refresh()
         stdscr.getch()
         return
