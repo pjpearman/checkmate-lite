@@ -29,6 +29,22 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; FileDownloaderBot/1.0; +https://example.com/bot)"
 }
 
+TARGET_ZIP_SUFFIXES = ("stig.zip", "srg.zip")
+
+
+def _is_target_zip(value: str) -> bool:
+    """Return True if *value* ends with a desired STIG/SRG zip filename."""
+
+    if not value:
+        return False
+    return value.lower().endswith(TARGET_ZIP_SUFFIXES)
+
+
+def _should_include(file_name: str, file_url: str) -> bool:
+    """Determine if the discovered file should be included in the results."""
+
+    return _is_target_zip(file_name) or _is_target_zip(file_url)
+
 # Set up logging
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
 LOG_FILE = os.path.join(LOG_DIR, "downloader.logs")
@@ -84,8 +100,9 @@ def parse_table_for_links(html_content):
         data_link = element["data-link"]
         if data_link.lower().endswith(".zip"):
             file_name = os.path.basename(data_link)
-            file_links.append((file_name, data_link))
-            logging.info(f"Found file (data-link): {file_name} -> {data_link}")
+            if _should_include(file_name, data_link):
+                file_links.append((file_name, data_link))
+                logging.info(f"Found file (data-link): {file_name} -> {data_link}")
     
     # Method 2: Look for download-related buttons/links with onclick handlers
     if not file_links:
@@ -97,8 +114,9 @@ def parse_table_for_links(html_content):
                 if url_match:
                     url = url_match.group(0)
                     file_name = os.path.basename(url)
-                    file_links.append((file_name, url))
-                    logging.info(f"Found file (onclick): {file_name} -> {url}")
+                    if _should_include(file_name, url):
+                        file_links.append((file_name, url))
+                        logging.info(f"Found file (onclick): {file_name} -> {url}")
     
     # Method 3: Look for any .zip URLs in rendered content (broader search)
     if not file_links:
@@ -106,8 +124,9 @@ def parse_table_for_links(html_content):
         zip_urls = re.findall(r'https?://[^\s"\'<>]+\.zip', html_content)
         for url in zip_urls:
             file_name = os.path.basename(url)
-            file_links.append((file_name, url))
-            logging.info(f"Found file (regex): {file_name} -> {url}")
+            if _should_include(file_name, url):
+                file_links.append((file_name, url))
+                logging.info(f"Found file (regex): {file_name} -> {url}")
     
     # Method 4: Traditional href links (fallback)
     if not file_links:
@@ -116,19 +135,22 @@ def parse_table_for_links(html_content):
             if href.lower().endswith(".zip"):
                 file_url = urljoin(URL, href)
                 file_name = os.path.basename(href)
-                file_links.append((file_name, file_url))
-                logging.info(f"Found file (href): {file_name} -> {file_url}")
+                if _should_include(file_name, file_url):
+                    file_links.append((file_name, file_url))
+                    logging.info(f"Found file (href): {file_name} -> {file_url}")
     
     # Filter to only STIG-related files if we found any
     if file_links:
-        stig_files = []
-        for name, url in file_links:
-            if any(keyword in name.lower() or keyword in url.lower() 
-                   for keyword in ['stig', 'u_', 'disa', 'security']):
-                stig_files.append((name, url))
-        if stig_files:
-            file_links = stig_files
-            logging.info(f"Filtered to {len(stig_files)} STIG-related files")
+        filtered_links = [
+            (name, url)
+            for name, url in file_links
+            if _should_include(name, url)
+        ]
+        file_links = filtered_links
+        if file_links:
+            logging.info(
+                "Filtered to %d STIG/SRG zip files", len(file_links)
+            )
     
     if not file_links:
         msg = """Warning: No download links found after JavaScript rendering.
@@ -180,7 +202,10 @@ def main():
     try:
         try:
             file_links = scrape_stig_file_links()
-            logging.info("Captured %d STIG download links via Playwright scraper", len(file_links))
+            logging.info(
+                "Captured %d download links via Playwright scraper",
+                len(file_links),
+            )
         except Exception as playwright_error:
             logging.warning(
                 "Playwright scraper failed (%s); falling back to legacy HTML parser.",
@@ -188,6 +213,16 @@ def main():
             )
             html_content = fetch_page(URL)
             file_links = parse_table_for_links(html_content)
+
+        file_links = [
+            (file_name, file_url)
+            for file_name, file_url in file_links
+            if _should_include(file_name, file_url)
+        ]
+        logging.info(
+            "Processing %d STIG/SRG download links after filtering",
+            len(file_links),
+        )
 
         for file_name, file_url in file_links:
             # TODO: Add logic to determine if this file is "new" (e.g., by timestamp or tracking a database)
