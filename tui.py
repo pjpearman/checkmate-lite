@@ -38,6 +38,7 @@ from input_validation import (
     get_safe_path
 )
 from answerfile_manager import load_cklb, extract_non_nf_rules
+from answerfile_manager import save_answers_to_answerfile
 from log_config import setup_logging, get_operation_logger
 from web import download_file
 from cklb_handler import (
@@ -1073,7 +1074,7 @@ def manage_answer_file_tui(stdscr):
             except curses.error:
                 pass
 
-        status_hint = f"Row {current_row+1}/{len(rules)} | Col: {current_col} | ↑↓ move, ←→ col, g goto, e/Enter edit, q back"
+        status_hint = f"Row {current_row+1}/{len(rules)} | Col: {current_col} | ↑↓ move, ←→ col, g goto, e/Enter edit, s save, q back"
         draw_status_bar(stdscr, status_hint, "info")
         stdscr.refresh()
         key = stdscr.getch()
@@ -1114,6 +1115,35 @@ def manage_answer_file_tui(stdscr):
                     rules[current_row]["comments"] = new_comment
                     lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
                     pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        elif key in [ord('s'), ord('S')]:
+            # Prompt for save target
+            save_path = browse_and_select_cklb_files(
+                stdscr,
+                start_dir=Path(cklb_path).parent,
+                file_label='.xml',
+                tooltip="Select AnswerFile (.xml) to save updates."
+            )
+            if not save_path:
+                continue
+            target = save_path[0]
+            confirm_msg = f"Save edits to {target}? (y/n)"
+            draw_status_bar(stdscr, confirm_msg, "warning")
+            stdscr.refresh()
+            confirm = stdscr.getch()
+            if confirm in [ord('y'), ord('Y')]:
+                try:
+                    stig_name = None
+                    if isinstance(cklb_data, dict):
+                        stigs = cklb_data.get("stigs") or []
+                        if stigs and isinstance(stigs, list):
+                            stig_name = stigs[0].get("display_name") or stigs[0].get("stig_name")
+                    summary = save_answers_to_answerfile(target, rules, stig_name)
+                    draw_status_bar(stdscr, f"Saved. Updated: {summary.get('updated',0)}; Backed up original.", "success")
+                except Exception as exc:
+                    logging.error("Save failed: %s", exc, exc_info=True)
+                    draw_status_bar(stdscr, f"Save failed: {exc}", "error")
+                stdscr.refresh()
+                stdscr.getch()
 
 def automatic_cklb_library_update_tui(stdscr):
     """
