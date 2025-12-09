@@ -122,13 +122,15 @@ def save_answers_to_answerfile(answerfile_path: Union[str, Path], edits: Iterabl
 
     for edit in edits:
         gid = edit.get("group_id") or edit.get("id")
-        status = edit.get("status", "")
+        current_status = edit.get("status", "")
+        orig_status = edit.get("orig_status") or edit.get("expected_status") or current_status
         comments = edit.get("comments", "") or ""
         if not gid:
             summary["skipped"] += 1
             continue
-        mapped_status = map_cklb_status_to_answerfile(status)
-        if not mapped_status:
+        mapped_expected = map_cklb_status_to_answerfile(orig_status)
+        mapped_true = map_cklb_status_to_answerfile(current_status)
+        if not mapped_expected or not mapped_true:
             summary["skipped"] += 1
             continue
         vuln = find_or_create_vuln(str(gid))
@@ -142,11 +144,11 @@ def save_answers_to_answerfile(answerfile_path: Union[str, Path], edits: Iterabl
             return child
         validation = ensure_child("ValidationCode")
         validation.text = validation.text or ""
-        ensure_child("ValidTrueStatus").text = mapped_status
+        ensure_child("ValidTrueStatus").text = mapped_true
         ensure_child("ValidTrueComment").text = comments
         ensure_child("ValidFalseStatus").text = ""
         ensure_child("ValidFalseComment").text = ""
-        answer.set("ExpectedStatus", mapped_status)
+        answer.set("ExpectedStatus", mapped_expected)
         summary["updated"] += 1
 
     # Backup then write

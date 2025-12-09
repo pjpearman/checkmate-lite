@@ -708,6 +708,11 @@ def manage_answer_file_tui(stdscr):
         stdscr.getch()
         return
 
+    # Preserve original status for ExpectedStatus mapping on save
+    for r in rules:
+        if "orig_status" not in r:
+            r["orig_status"] = r.get("status", "")
+
     allowed_statuses = ["open", "not_a_finding", "not_reviewed", "not_applicable"]
 
     def build_table_lines(max_width: int):
