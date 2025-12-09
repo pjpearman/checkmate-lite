@@ -861,18 +861,86 @@ def manage_answer_file_tui(stdscr):
         finally:
             curses.noecho()
 
-    def edit_status_inline(current_status: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
+    def select_status_dropdown(current_status: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
+        # Ensure visibility
+        target_pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        if target_pos != pos:
+            pos = target_pos
+        y, x = get_cell_screen_pos(current_row, "status", pos, row_starts, col_spans)
         current_lower = (current_status or "").lower()
-        start_val = current_lower if current_lower in allowed_statuses else allowed_statuses[0]
-        val, new_pos = edit_inline("status", start_val, pos, max_lines, row_starts, col_spans)
-        if val is None:
-            return None, new_pos
-        if val.lower() not in allowed_statuses:
-            draw_status_bar(stdscr, f"Invalid status. Allowed: {', '.join(allowed_statuses)}", "error")
-            stdscr.refresh()
-            curses.napms(800)
-            return None, new_pos
-        return val.lower(), new_pos
+        sel = allowed_statuses.index(current_lower) if current_lower in allowed_statuses else 0
+
+        win_height = len(allowed_statuses) + 2
+        max_opt_len = max(len(s) for s in allowed_statuses)
+        win_width = max_opt_len + 4
+        # Position dropdown just below the cell, fallback upwards if no space
+        win_y = y + 1
+        if win_y + win_height >= curses.LINES:
+            win_y = max(0, y - win_height)
+        win_x = x
+        if win_x + win_width >= curses.COLS:
+            win_x = max(0, curses.COLS - win_width - 1)
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+
+        win = curses.newwin(win_height, win_width, win_y, win_x)
+        try:
+            win.keypad(True)
+        except Exception:
+            pass
+        try:
+            win.timeout(150)  # allow reading escape sequences for arrows
+        except Exception:
+            pass
+        try:
+            win.bkgd(' ', curses.color_pair(0))
+        except curses.error:
+            pass
+        while True:
+            try:
+                win.clear()
+                win.border()
+                for idx, opt in enumerate(allowed_statuses):
+                    attr = curses.A_REVERSE if idx == sel else curses.A_NORMAL
+                    win.addstr(1 + idx, 2, opt.ljust(max_opt_len), attr)
+                win.refresh()
+            except curses.error:
+                pass
+            ch = win.getch()
+            if ch in (curses.KEY_UP, ord('k')):
+                sel = (sel - 1) % len(allowed_statuses)
+            elif ch in (curses.KEY_DOWN, ord('j')):
+                sel = (sel + 1) % len(allowed_statuses)
+            elif ch == 27:  # handle escape or CSI arrow sequences
+                nxt = win.getch()
+                if nxt == -1:
+                    try:
+                        curses.curs_set(1)
+                    except curses.error:
+                        pass
+                    return None, pos
+                if nxt == 91:  # '['
+                    third = win.getch()
+                    if third in (65,):  # 'A' up
+                        sel = (sel - 1) % len(allowed_statuses)
+                        continue
+                    if third in (66,):  # 'B' down
+                        sel = (sel + 1) % len(allowed_statuses)
+                        continue
+                # otherwise treat as cancel
+                try:
+                    curses.curs_set(1)
+                except curses.error:
+                    pass
+                return None, pos
+            elif ch in (10, 13):
+                try:
+                    curses.curs_set(1)
+                except curses.error:
+                    pass
+                return allowed_statuses[sel], pos
 
     def edit_comments_inline(current_text: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
         val, new_pos = edit_inline("comments", current_text, pos, max_lines, row_starts, col_spans)
@@ -961,7 +1029,7 @@ def manage_answer_file_tui(stdscr):
                 curses.napms(600)
         elif key in [ord('e'), 10, 13]:
             if current_col == "status":
-                new_status, pos = edit_status_inline(rules[current_row].get("status", ""), pos, max_lines, row_starts, col_spans)
+                new_status, pos = select_status_dropdown(rules[current_row].get("status", ""), pos, max_lines, row_starts, col_spans)
                 if new_status:
                     rules[current_row]["status"] = new_status
                     lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
