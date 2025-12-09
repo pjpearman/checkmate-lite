@@ -1,0 +1,92 @@
+---
+- name: Identify reachable hosts
+  hosts: all
+  connection: local
+  gather_facts: false
+  strategy: linear
+
+  tasks:
+    - block:
+        - name: determine hosts that are reachable
+          ansible.builtin.wait_for_connection:
+            timeout: 5
+          vars:
+            ansible_connection: ssh
+        - name: add devices with connectivity to the "reachable" group
+          ansible.builtin.group_by:
+            key: reachable
+      rescue:
+        - name: debug print unreachable host(s)
+          ansible.builtin.debug: msg="cannot connect to {{ inventory_hostname }}"
+
+- name: Run Evaluate-STIG
+  ignore_unreachable: yes
+  hosts: reachable
+  become: true
+  gather_facts: true
+  vars_prompt:
+    - name: output
+      prompt: Specify output type(s).  Use comma separation for multiple. Choose from CKL|CKLB|CSV|XCCDF|CombinedCKL|CombinedCKLB|CombinedCSV|OQE|Summary
+      private: no
+    - name: outputpath
+      prompt: Enter local path to save Evaluate-STIG results
+      private: no
+
+  tasks:
+    - name: Archive Evaluate-STIG Directory
+      archive:
+        path: "{{ playbook_dir }}/Evaluate-STIG"
+        dest: "{{ playbook_dir }}/Evaluate-STIG.zip"
+        format: zip
+      delegate_to: localhost
+      become: false
+
+    - name: Extract Evaluate-STIG archive on remote host
+      unarchive:
+        src: "{{ playbook_dir }}/Evaluate-STIG.zip"
+        dest: /root/
+
+    - name: Execute Evaluate-STIG
+      command: bash /root/Evaluate-STIG/Evaluate-STIG_Bash.sh --Output {{ output }}
+      async: 3600
+      poll: 120
+
+    - name: Archive Evaluate-STIG Results
+      archive:
+        path: "/opt/STIG_Compliance/{{ ansible_hostname | upper }}"
+        dest: "/opt/STIG_Compliance/{{ ansible_hostname | upper }}.zip"
+        format: zip
+
+    - name: Clear Existing results
+      file:
+        path: "{{ outputpath }}/{{ ansible_hostname | upper }}"
+        state: absent
+      delegate_to: localhost
+    
+    - name: Fetch Evaluate-STIG Results archive from remote host
+      fetch:
+        src: "/opt/STIG_Compliance/{{ ansible_hostname | upper }}.zip"
+        dest: "{{ outputpath }}/"
+        flat: yes
+
+    - name: Process Evaluate-STIG Results
+      block:
+        - name: Extract Evaluate-STIG Results Archive
+          unarchive:
+            src: "{{ outputpath }}/{{ ansible_hostname | upper }}.zip"
+            dest: "{{ outputpath }}"
+          delegate_to: localhost
+
+        - name: Delete Evaluate-STIG Results Archive
+          file:
+            path: "{{ outputpath }}/{{ ansible_hostname | upper }}.zip"
+            state: absent
+          delegate_to: localhost
+
+    - name: Clean up Evaluate-STIG
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /root/Evaluate-STIG
+        - /opt/STIG_Compliance

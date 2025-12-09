@@ -1,0 +1,1 @@
+Place the extracted xccdf.xml here for STIGs that Evaluate-STIG doesn not natively support.  If an answer file exists for an unsupported STIG, Evaluate-STIG will process it.

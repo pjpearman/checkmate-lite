@@ -1,5 +1,6 @@
 venv/
+myvenv/
 logs/
 user_docs/
 __pycache__/
-CLAUDE.md
+tmp/*.cklb

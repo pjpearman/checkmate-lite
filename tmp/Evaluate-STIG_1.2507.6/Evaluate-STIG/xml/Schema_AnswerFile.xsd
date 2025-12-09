@@ -1,0 +1,144 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" attributeFormDefault="unqualified" elementFormDefault="qualified">
+  <xs:element name="STIGComments">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Vuln" maxOccurs="500" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="AnswerKey" maxOccurs="500" minOccurs="1">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Answer" maxOccurs="500" minOccurs="1">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element type="xs:string" name="ValidationCode"/>
+                          <xs:element name="ValidTrueStatus">
+                            <xs:simpleType>
+                              <xs:restriction base="xs:string">
+                                <!-- Empty is valid -->
+                                <xs:enumeration value=""/>
+
+                                <!-- "Not Reviewed" formats -->
+                                <xs:enumeration value="NR"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="Not_Reviewed"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="notchecked"/> <!-- XCCDF -->
+
+                                <!-- "Not A Finding" formats -->
+                                <xs:enumeration value="NF"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="NotAFinding"/> <!-- CKL -->
+                                <xs:enumeration value="not_a_finding"/> <!-- CKLB -->
+                                <xs:enumeration value="pass"/> <!-- XCCDF -->
+
+                                <!-- "Not Applicable" formats -->
+                                <xs:enumeration value="NA"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="Not_Applicable"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="notapplicable"/> <!-- XCCDF -->
+
+                                <!-- "Open" formats -->
+                                <xs:enumeration value="O"/> <!-- EvalSTIG  -->
+                                <xs:enumeration value="Open"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="fail"/> <!-- XCCDF -->
+                              </xs:restriction>
+                            </xs:simpleType>
+                          </xs:element>
+                          <xs:element type="xs:string" name="ValidTrueComment" maxOccurs="1" minOccurs="1"/>
+                          <xs:element name="ValidFalseStatus">
+                            <xs:simpleType>
+                              <xs:restriction base="xs:string">
+                                <!-- Empty is valid -->
+                                <xs:enumeration value=""/>
+
+                                <!-- "Not Reviewed" formats -->
+                                <xs:enumeration value="NR"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="Not_Reviewed"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="notchecked"/> <!-- XCCDF -->
+
+                                <!-- "Not A Finding" formats -->
+                                <xs:enumeration value="NF"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="NotAFinding"/> <!-- CKL -->
+                                <xs:enumeration value="not_a_finding"/> <!-- CKLB -->
+                                <xs:enumeration value="pass"/> <!-- XCCDF -->
+
+                                <!-- "Not Applicable" formats -->
+                                <xs:enumeration value="NA"/> <!-- EvalSTIG -->
+                                <xs:enumeration value="Not_Applicable"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="notapplicable"/> <!-- XCCDF -->
+
+                                <!-- "Open" formats -->
+                                <xs:enumeration value="O"/> <!-- EvalSTIG  -->
+                                <xs:enumeration value="Open"/> <!-- CKL/CKLB -->
+                                <xs:enumeration value="fail"/> <!-- XCCDF -->
+                              </xs:restriction>
+                            </xs:simpleType>
+                          </xs:element>
+                          <xs:element type="xs:string" name="ValidFalseComment" maxOccurs="1" minOccurs="1"/>
+                        </xs:sequence>
+                        <xs:attribute type="xs:string" name="Index" use="required" />
+                        <xs:attribute name="ExpectedStatus" use="required">
+                          <xs:simpleType>
+                            <xs:restriction base="xs:string">
+                              <!-- "Not Reviewed" formats -->
+                              <xs:enumeration value="NR"/> <!-- EvalSTIG -->
+                              <xs:enumeration value="Not_Reviewed"/> <!-- CKL/CKLB -->
+                              <xs:enumeration value="notchecked"/> <!-- XCCDF -->
+
+                              <!-- "Not A Finding" formats -->
+                              <xs:enumeration value="NF"/> <!-- EvalSTIG -->
+                              <xs:enumeration value="NotAFinding"/> <!-- CKL -->
+                              <xs:enumeration value="not_a_finding"/> <!-- CKLB -->
+                              <xs:enumeration value="pass"/> <!-- XCCDF -->
+
+                              <!-- "Not Applicable" formats -->
+                              <xs:enumeration value="NA"/> <!-- EvalSTIG -->
+                              <xs:enumeration value="Not_Applicable"/> <!-- CKL/CKLB -->
+                              <xs:enumeration value="notapplicable"/> <!-- XCCDF -->
+
+                              <!-- "Open" formats -->
+                              <xs:enumeration value="O"/> <!-- EvalSTIG  -->
+                              <xs:enumeration value="Open"/> <!-- CKL/CKLB -->
+                              <xs:enumeration value="fail"/> <!-- XCCDF -->
+                            </xs:restriction>
+                          </xs:simpleType>
+                        </xs:attribute>
+                        <xs:attribute type="xs:string" name="Hostname" use="optional" />
+                        <xs:attribute type="xs:string" name="Instance" use="optional" />
+                        <xs:attribute type="xs:string" name="Database" use="optional" />
+                        <xs:attribute type="xs:string" name="Site" use="optional" />
+                        <xs:attribute type="xs:string" name="ResultHash" use="optional" />
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute type="xs:string" name="Name" use="required"/>
+                </xs:complexType>
+                <xs:unique name="AnswerIndexUniqueKey">
+                  <xs:selector xpath="Answer"/>
+                  <xs:field xpath="@Index"/>
+                </xs:unique>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="ID" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:pattern value="([Vv]-\d{4,6}|[Ss][Vv]-\d{4,6}[Rr]\d{1,}_[Rr][Uu][Ll][Ee])" />
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+          </xs:complexType>
+          <xs:unique name="AnswerKeyUniqueKey">
+            <xs:selector xpath="AnswerKey"/>
+            <xs:field xpath="@Name"/>
+          </xs:unique>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="Name" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string"/>
+        </xs:simpleType>
+      </xs:attribute>
+    </xs:complexType>
+    <xs:unique name="VulnIdUniqueKey">
+      <xs:selector xpath="Vuln"/>
+      <xs:field xpath="@ID"/>
+    </xs:unique>
+  </xs:element>
+</xs:schema>

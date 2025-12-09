@@ -1,0 +1,63 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" attributeFormDefault="unqualified" elementFormDefault="qualified">
+  <xs:element name="List">
+    <xs:annotation>
+      <xs:documentation><![CDATA[**************************************************************************************This file maps the STIG to the associated CKL Template and Answer File (if applicable).<STIG>..Enabled : globally enables/disables the STIG in Evaluate-STIG.  Set to "true" or "false".  Typically, all STIGs should be enabled and let Evaluate-STIG determine applicability.  Disabling of a STIG should only be done if you never want a CKL for that STIG...Name    : is the friendly name for the STIG.  Answer Files must reference the Name here exactly.<Template> is the name of the blank .ckl file for the STIG and must be stored in the CKLTemplates subfolder.<Benchmark> is the extracted benchmark file name and must be stored in the BenchmarkContent subfolder.  If no benchmark is used, do not specify this element.<ScapStream> is the name of the SCAP result folder created by the benchmark.  If no benchmark is used, do not specify this element.<DetectionCode> is Powershell code that detects if the STIG is applicable to a system.  Must return true/false.<PsModule> is the file name for the custom check module for the STIG and must be stored in the Modules subfolder.**************************************************************************************]]></xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="STIG" maxOccurs="500" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element type="xs:string" name="Name"/>
+              <xs:element type="xs:string" name="ShortName"/>
+              <xs:element type="xs:string" name="StigContent"/>
+              <xs:element type="xs:string" name="ContentHash"/>
+              <xs:element type="xs:string" name="StigSource"/>
+              <xs:element type="xs:string" name="SourceHash"/>
+              <xs:element name="Counts">
+                <xs:complexType>
+                  <xs:attribute type="xs:integer" name="CATI" use="required" />
+                  <xs:attribute type="xs:integer" name="CATII" use="required" />
+                  <xs:attribute type="xs:integer" name="CATIII" use="required" />
+                </xs:complexType>
+              </xs:element>
+              <xs:element type="xs:string" name="DisaCommonName"/>
+              <xs:element type="xs:string" name="DisaStatus"/>
+              <xs:element type="xs:string" name="DetectionCode"/>
+              <xs:element type="xs:string" name="PsModule"/>
+              <xs:element type="xs:string" name="PsModuleVer"/>
+              <xs:element type="xs:boolean" name="UserSettings"/>
+              <xs:element type="xs:boolean" name="CanCombine"/>
+              <xs:element type="xs:string" name="AssetType"/>
+              <xs:element type="xs:string" name="Classification"/>
+              <xs:element type="xs:string" name="ApplicableOS"/>
+              <xs:element name="CklTechArea">
+                <xs:simpleType>
+                  <xs:restriction base="xs:string">
+                    <xs:enumeration value="Application Review"/>
+                    <xs:enumeration value="Database Review"/>
+                    <xs:enumeration value="Domain Name System (DNS)"/>
+                    <xs:enumeration value="Exchange Server"/>
+                    <xs:enumeration value="UNIX OS"/>
+                    <xs:enumeration value="Web Review"/>
+                    <xs:enumeration value="Windows OS"/>
+                    <xs:enumeration value="Other Review"/>
+                  </xs:restriction>
+                </xs:simpleType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:any minOccurs="0" maxOccurs="500" namespace="##other" processContents="skip"/>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="StigNameUnique">
+      <xs:selector xpath="STIG"/>
+      <xs:field xpath="Name"/>
+    </xs:unique>
+    <xs:unique name="StigShortNameUnique">
+      <xs:selector xpath="STIG"/>
+      <xs:field xpath="ShortName"/>
+    </xs:unique>
+  </xs:element>
+</xs:schema>
