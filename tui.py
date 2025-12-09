@@ -791,17 +791,22 @@ def manage_answer_file_tui(stdscr):
         if target_pos != pos:
             pos = target_pos
         y, x = get_cell_screen_pos(current_row, col_name, pos, row_starts, col_spans)
-        width_lim = col_spans[col_name][1] - col_spans[col_name][0] - 1
+        width_lim = max(1, col_spans[col_name][1] - col_spans[col_name][0] - 1)
         buf = list(current_text or "")
-        cursor = min(len(buf), width_lim)
+        # Viewport so we can start at the end of existing text
+        start_offset = max(0, len(buf) - width_lim)
+        cursor = len(buf)
         curses.curs_set(1)
+        hint = f"Editing {col_name} (Enter=save, Esc=cancel, ←/→ move, Backspace delete)"
         while True:
             try:
+                draw_status_bar(stdscr, hint, "info")
                 # Rewrite the cell contents inline
-                display = "".join(buf)[:width_lim]
+                display = "".join(buf[start_offset:start_offset + width_lim])
                 stdscr.addstr(y, x, " " * width_lim)
                 stdscr.addstr(y, x, display)
-                stdscr.move(y, x + cursor)
+                screen_cursor = min(cursor - start_offset, width_lim - 1)
+                stdscr.move(y, x + screen_cursor)
                 stdscr.refresh()
             except curses.error:
                 pass
@@ -816,14 +821,28 @@ def manage_answer_file_tui(stdscr):
                 if cursor > 0:
                     buf.pop(cursor - 1)
                     cursor -= 1
+                    if cursor < start_offset:
+                        start_offset = max(0, start_offset - 1)
+                continue
+            if ch in (curses.KEY_HOME,):
+                cursor = 0
+                start_offset = 0
+                continue
+            if ch in (curses.KEY_END,):
+                cursor = len(buf)
+                start_offset = max(0, cursor - width_lim + 1)
                 continue
             if ch in (curses.KEY_LEFT,):
                 if cursor > 0:
                     cursor -= 1
+                    if cursor < start_offset:
+                        start_offset = max(0, start_offset - 1)
                 continue
             if ch in (curses.KEY_RIGHT,):
-                if cursor < min(len(buf), width_lim):
+                if cursor < len(buf):
                     cursor += 1
+                    if cursor >= start_offset + width_lim:
+                        start_offset += 1
                 continue
             if 32 <= ch <= 126:
                 if len(buf) < 1000:
@@ -831,8 +850,9 @@ def manage_answer_file_tui(stdscr):
                         buf.append(chr(ch))
                     else:
                         buf.insert(cursor, chr(ch))
-                    if cursor < width_lim - 1:
-                        cursor += 1
+                    cursor += 1
+                    if cursor >= start_offset + width_lim:
+                        start_offset += 1
                 continue
 
     def ensure_row_visible(row_idx: int, pos: int, max_lines: int, row_starts: list[int], total_lines: int) -> int:
@@ -942,9 +962,59 @@ def manage_answer_file_tui(stdscr):
                     pass
                 return allowed_statuses[sel], pos
 
-    def edit_comments_inline(current_text: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
-        val, new_pos = edit_inline("comments", current_text, pos, max_lines, row_starts, col_spans)
-        return val, new_pos
+    def edit_comments_popup(current_text: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
+        import curses.textpad as textpad
+        import curses.ascii as ascii
+
+        target_pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        if target_pos != pos:
+            pos = target_pos
+        y, x = get_cell_screen_pos(current_row, "comments", pos, row_starts, col_spans)
+        span = col_spans.get("comments", (x, x + 20))
+        win_width = min(max((span[1] - span[0]) + 4, 40), curses.COLS - 2)
+        win_height = min(max(6, len(current_text.splitlines()) + 3), max(6, curses.LINES - 4))
+        win_y = max(0, min(curses.LINES - win_height - 1, y))
+        win_x = max(0, min(curses.COLS - win_width - 1, span[0]))
+        win = curses.newwin(win_height, win_width, win_y, win_x)
+        win.keypad(True)
+        try:
+            win.bkgd(' ', curses.color_pair(0))
+        except curses.error:
+            pass
+        win.border()
+        hint = "Ctrl-G to save | Esc/q to cancel"
+        try:
+            win.addstr(0, 2, " Edit comments ", curses.A_BOLD)
+            win.addstr(win_height - 1, 2, hint[:win_width - 4], curses.A_DIM)
+        except curses.error:
+            pass
+        area_h = win_height - 2
+        area_w = win_width - 2
+        area = win.derwin(area_h, area_w, 1, 1)
+        area.keypad(True)
+        # Pre-fill text and move cursor to end
+        try:
+            area.addstr(0, 0, current_text)
+            lines_pre = current_text.splitlines() or [""]
+            last_line = lines_pre[-1]
+            area.move(min(area_h - 1, len(lines_pre) - 1), min(area_w - 1, len(last_line)))
+        except curses.error:
+            pass
+        canceled = {"flag": False}
+
+        def validator(ch):
+            if ch in (27, ord('q'), ord('Q')):
+                canceled["flag"] = True
+                return ascii.BEL  # terminate edit
+            return ch
+
+        draw_status_bar(stdscr, hint, "info")
+        stdscr.refresh()
+        txtbox = textpad.Textbox(area, insert_mode=True)
+        res = txtbox.edit(validator)
+        if canceled["flag"]:
+            return None, pos
+        return res.rstrip('\n'), pos
 
     # Initial render data
     lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
@@ -1035,7 +1105,7 @@ def manage_answer_file_tui(stdscr):
                     lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
                     pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
             else:
-                new_comment, pos = edit_comments_inline(rules[current_row].get("comments", ""), pos, max_lines, row_starts, col_spans)
+                new_comment, pos = edit_comments_popup(rules[current_row].get("comments", ""), pos, max_lines, row_starts, col_spans)
                 if new_comment is not None:
                     rules[current_row]["comments"] = new_comment
                     lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
