@@ -670,7 +670,7 @@ def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] =
 
 def manage_answer_file_tui(stdscr):
     """
-    TUI flow to inspect CKLB findings that are not 'not_a_finding' for answer file editing.
+    TUI flow to inspect and edit CKLB findings for answer file editing (in-memory only).
     """
     import textwrap
     clean_screen(stdscr)
@@ -701,29 +701,32 @@ def manage_answer_file_tui(stdscr):
 
     if not rules:
         clean_screen(stdscr)
-        stdscr.addstr(0, 0, "No findings with status other than 'not_a_finding'.")
+        stdscr.addstr(0, 0, "No findings with status of interest (open/not_reviewed/not_a_finding/not_applicable).")
         stdscr.addstr(2, 0, "Press any key to return.")
         stdscr.refresh()
         stdscr.getch()
         return
 
-    def build_table_lines(max_width: int) -> list[str]:
+    allowed_statuses = ["open", "not_a_finding", "not_reviewed", "not_applicable"]
+
+    def build_table_lines(max_width: int):
         # Fixed widths for id/status; remaining space split for text columns
+        num_w = 4
         gid_w = 14
         status_w = 16
-        padding = 2
-        min_width = max(max_width, 60)
-        remaining = max(min_width - (gid_w + status_w + padding * 4), 30)
+        padding = 1
+        min_width = max(max_width, 70)
+        remaining = max(min_width - (num_w + gid_w + status_w + padding * 5), 40)
         text_col_base = max(12, remaining // 3)
         title_w = text_col_base
         fix_w = text_col_base
-        comments_w = remaining - (title_w + fix_w)
-        comments_w = max(comments_w, 12)
+        comments_w = max(12, remaining - (title_w + fix_w))
 
         def wrap_field(val: str, width: int) -> list[str]:
             return textwrap.wrap(val or "", width) or [""]
 
         header = (
+            f"{'#'.ljust(num_w)}{' ' * padding}"
             f"{'group_id'.ljust(gid_w)}{' ' * padding}"
             f"{'status'.ljust(status_w)}{' ' * padding}"
             f"{'group_title'.ljust(title_w)}{' ' * padding}"
@@ -732,50 +735,243 @@ def manage_answer_file_tui(stdscr):
         )
         sep = "-" * min(len(header), max_width)
 
-        lines = [header[:max_width], sep[:max_width]]
-        for rule in rules:
+        lines: list[str] = [header[:max_width], sep[:max_width]]
+        line_rows: list[int] = [-1, -1]
+        row_line_starts: list[int] = []
+
+        # Column spans for highlighting (start inclusive, end exclusive)
+        col_spans = {}
+        cursor = 0
+        col_spans["rownum"] = (cursor, cursor + num_w)
+        cursor += num_w + padding
+        col_spans["group_id"] = (cursor, cursor + gid_w)
+        cursor += gid_w + padding
+        col_spans["status"] = (cursor, cursor + status_w)
+        cursor += status_w + padding
+        col_spans["group_title"] = (cursor, cursor + title_w)
+        cursor += title_w + padding
+        col_spans["fix_text"] = (cursor, cursor + fix_w)
+        cursor += fix_w + padding
+        col_spans["comments"] = (cursor, cursor + comments_w)
+
+        for idx, rule in enumerate(rules):
             gid_lines = wrap_field(str(rule.get("group_id", "")), gid_w)
             status_lines = wrap_field(str(rule.get("status", "")), status_w)
             title_lines = wrap_field(str(rule.get("group_title", "")), title_w)
             fix_lines = wrap_field(str(rule.get("fix_text", "")), fix_w)
             comment_lines = wrap_field(str(rule.get("comments", "")), comments_w)
             max_lines = max(len(gid_lines), len(status_lines), len(title_lines), len(fix_lines), len(comment_lines))
-            for idx in range(max_lines):
+            row_line_starts.append(len(lines))
+            for line_idx in range(max_lines):
                 line = (
-                    f"{(gid_lines[idx] if idx < len(gid_lines) else '').ljust(gid_w)}{' ' * padding}"
-                    f"{(status_lines[idx] if idx < len(status_lines) else '').ljust(status_w)}{' ' * padding}"
-                    f"{(title_lines[idx] if idx < len(title_lines) else '').ljust(title_w)}{' ' * padding}"
-                    f"{(fix_lines[idx] if idx < len(fix_lines) else '').ljust(fix_w)}{' ' * padding}"
-                    f"{(comment_lines[idx] if idx < len(comment_lines) else '').ljust(comments_w)}"
+                    f"{(str(idx+1) if line_idx == 0 else '').ljust(num_w)}{' ' * padding}"
+                    f"{(gid_lines[line_idx] if line_idx < len(gid_lines) else '').ljust(gid_w)}{' ' * padding}"
+                    f"{(status_lines[line_idx] if line_idx < len(status_lines) else '').ljust(status_w)}{' ' * padding}"
+                    f"{(title_lines[line_idx] if line_idx < len(title_lines) else '').ljust(title_w)}{' ' * padding}"
+                    f"{(fix_lines[line_idx] if line_idx < len(fix_lines) else '').ljust(fix_w)}{' ' * padding}"
+                    f"{(comment_lines[line_idx] if line_idx < len(comment_lines) else '').ljust(comments_w)}"
                 )
                 lines.append(line[:max_width])
-        return lines
+                line_rows.append(idx)
+        return lines, line_rows, row_line_starts, col_spans
 
-    lines = build_table_lines(curses.COLS - 1)
+    def get_cell_screen_pos(row_idx: int, col_name: str, pos: int, row_starts: list[int], col_spans: dict) -> tuple[int, int]:
+        if row_idx < 0 or row_idx >= len(row_starts):
+            return -1, -1
+        line_idx = row_starts[row_idx]
+        y = line_idx - pos
+        span = col_spans.get(col_name)
+        if not span:
+            return y, 0
+        return y, span[0]
+
+    def edit_inline(col_name: str, current_text: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict) -> tuple[str | None, int]:
+        # Ensure the row is visible
+        target_pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        if target_pos != pos:
+            pos = target_pos
+        y, x = get_cell_screen_pos(current_row, col_name, pos, row_starts, col_spans)
+        width_lim = col_spans[col_name][1] - col_spans[col_name][0] - 1
+        buf = list(current_text or "")
+        cursor = min(len(buf), width_lim)
+        curses.curs_set(1)
+        while True:
+            try:
+                # Rewrite the cell contents inline
+                display = "".join(buf)[:width_lim]
+                stdscr.addstr(y, x, " " * width_lim)
+                stdscr.addstr(y, x, display)
+                stdscr.move(y, x + cursor)
+                stdscr.refresh()
+            except curses.error:
+                pass
+            ch = stdscr.getch()
+            if ch in (10, 13):  # Enter
+                curses.curs_set(0)
+                return "".join(buf), pos
+            if ch == 27:  # ESC
+                curses.curs_set(0)
+                return None, pos
+            if ch in (curses.KEY_BACKSPACE, 127, 8):
+                if cursor > 0:
+                    buf.pop(cursor - 1)
+                    cursor -= 1
+                continue
+            if ch in (curses.KEY_LEFT,):
+                if cursor > 0:
+                    cursor -= 1
+                continue
+            if ch in (curses.KEY_RIGHT,):
+                if cursor < min(len(buf), width_lim):
+                    cursor += 1
+                continue
+            if 32 <= ch <= 126:
+                if len(buf) < 1000:
+                    if cursor >= len(buf):
+                        buf.append(chr(ch))
+                    else:
+                        buf.insert(cursor, chr(ch))
+                    if cursor < width_lim - 1:
+                        cursor += 1
+                continue
+
+    def ensure_row_visible(row_idx: int, pos: int, max_lines: int, row_starts: list[int], total_lines: int) -> int:
+        if row_idx < 0 or row_idx >= len(row_starts):
+            return pos
+        start = row_starts[row_idx]
+        next_start = row_starts[row_idx + 1] if row_idx + 1 < len(row_starts) else total_lines
+        end = next_start - 1
+        if start < pos:
+            return start
+        if end >= pos + max_lines:
+            return max(0, end - max_lines + 1)
+        return pos
+
+    def prompt_goto_row():
+        prompt = "Goto row #: "
+        draw_status_bar(stdscr, prompt, "info")
+        curses.echo()
+        try:
+            inp = stdscr.getstr(curses.LINES - 1, len(prompt) + 1, 10)
+            try:
+                val = int(inp.decode().strip())
+                return val
+            except Exception:
+                return None
+        finally:
+            curses.noecho()
+
+    def edit_status_inline(current_status: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
+        current_lower = (current_status or "").lower()
+        start_val = current_lower if current_lower in allowed_statuses else allowed_statuses[0]
+        val, new_pos = edit_inline("status", start_val, pos, max_lines, row_starts, col_spans)
+        if val is None:
+            return None, new_pos
+        if val.lower() not in allowed_statuses:
+            draw_status_bar(stdscr, f"Invalid status. Allowed: {', '.join(allowed_statuses)}", "error")
+            stdscr.refresh()
+            curses.napms(800)
+            return None, new_pos
+        return val.lower(), new_pos
+
+    def edit_comments_inline(current_text: str, pos: int, max_lines: int, row_starts: list[int], col_spans: dict):
+        val, new_pos = edit_inline("comments", current_text, pos, max_lines, row_starts, col_spans)
+        return val, new_pos
+
+    # Initial render data
+    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
     pos = 0
+    current_row = 0
+    current_col = "status"  # or "comments"
+
+    try:
+        curses.curs_set(1)
+    except curses.error:
+        pass
+
     while True:
         try:
-            # Ensure neutral background for this view on every redraw to prevent blue bleed.
             stdscr.bkgd(' ', curses.color_pair(0))
             stdscr.attrset(curses.color_pair(0))
         except curses.error:
             pass
         stdscr.clear()
-        max_lines = curses.LINES - 2
+        max_lines = curses.LINES - 3  # leave room for status bar
+        # Render lines with highlight for current row/column
         for i in range(max_lines):
-            if pos + i < len(lines):
-                stdscr.addstr(i, 0, lines[pos + i][:curses.COLS-1])
-        draw_status_bar(stdscr, "UP/DOWN: scroll  q: back", "info")
+            line_idx = pos + i
+            if line_idx >= len(lines):
+                break
+            line = lines[line_idx]
+            row_idx = line_rows[line_idx]
+            try:
+                if row_idx == current_row:
+                    stdscr.attron(curses.A_BOLD)
+                    stdscr.addstr(i, 0, line[:curses.COLS-1])
+                    stdscr.attroff(curses.A_BOLD)
+                    span = col_spans.get(current_col)
+                    if span:
+                        start, end = span
+                        width_lim = curses.COLS - 1
+                        if start < width_lim:
+                            seg = line[start:min(end, width_lim)]
+                            stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
+                            stdscr.addstr(i, start, seg)
+                            stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
+                else:
+                    stdscr.addstr(i, 0, line[:curses.COLS-1])
+            except curses.error:
+                pass
+
+        # Place cursor at active cell start if visible
+        cy, cx = get_cell_screen_pos(current_row, current_col, pos, row_starts, col_spans)
+        if 0 <= cy < max_lines and cx < curses.COLS - 1 and cy >= 0:
+            try:
+                stdscr.move(cy, cx)
+            except curses.error:
+                pass
+
+        status_hint = f"Row {current_row+1}/{len(rules)} | Col: {current_col} | ↑↓ move, ←→ col, g goto, e/Enter edit, q back"
+        draw_status_bar(stdscr, status_hint, "info")
         stdscr.refresh()
         key = stdscr.getch()
-        if key == curses.KEY_UP:
-            if pos > 0:
-                pos -= 1
-        elif key == curses.KEY_DOWN:
-            if pos + max_lines < len(lines):
-                pos += 1
-        elif key in [ord('q'), ord('Q'), ord('b'), ord('B')]:
+
+        if key in [ord('q'), ord('Q'), ord('b'), ord('B')]:
             break
+        elif key in [curses.KEY_UP, ord('k')]:
+            if current_row > 0:
+                current_row -= 1
+                pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        elif key in [curses.KEY_DOWN, ord('j')]:
+            if current_row < len(rules) - 1:
+                current_row += 1
+                pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+        elif key in [curses.KEY_LEFT, ord('h')]:
+            current_col = "status" if current_col == "comments" else "status"
+        elif key in [curses.KEY_RIGHT, ord('l')]:
+            current_col = "comments" if current_col == "status" else "comments"
+        elif key in [ord('g')]:
+            target = prompt_goto_row()
+            if target is not None and 1 <= target <= len(rules):
+                current_row = target - 1
+                pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+            else:
+                draw_status_bar(stdscr, "Invalid row number.", "error")
+                stdscr.refresh()
+                curses.napms(600)
+        elif key in [ord('e'), 10, 13]:
+            if current_col == "status":
+                new_status, pos = edit_status_inline(rules[current_row].get("status", ""), pos, max_lines, row_starts, col_spans)
+                if new_status:
+                    rules[current_row]["status"] = new_status
+                    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
+                    pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
+            else:
+                new_comment, pos = edit_comments_inline(rules[current_row].get("comments", ""), pos, max_lines, row_starts, col_spans)
+                if new_comment is not None:
+                    rules[current_row]["comments"] = new_comment
+                    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
+                    pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
 
 def automatic_cklb_library_update_tui(stdscr):
     """
