@@ -756,10 +756,14 @@ def manage_answer_file_tui(stdscr):
 
         for idx, rule in enumerate(rules):
             gid_lines = wrap_field(str(rule.get("group_id", "")), gid_w)
-            status_lines = wrap_field(str(rule.get("status", "")), status_w)
+            status_val = str(rule.get("status", "")).strip()
+            comments_val = str(rule.get("comments", "")).strip()
+            status_display = status_val if status_val else "(empty)"
+            comments_display = comments_val if comments_val else "(empty)"
+            status_lines = wrap_field(status_display, status_w)
             title_lines = wrap_field(str(rule.get("group_title", "")), title_w)
             fix_lines = wrap_field(str(rule.get("fix_text", "")), fix_w)
-            comment_lines = wrap_field(str(rule.get("comments", "")), comments_w)
+            comment_lines = wrap_field(comments_display, comments_w)
             max_lines = max(len(gid_lines), len(status_lines), len(title_lines), len(fix_lines), len(comment_lines))
             row_line_starts.append(len(lines))
             for line_idx in range(max_lines):
