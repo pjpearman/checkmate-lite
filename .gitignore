@@ -4,3 +4,4 @@ logs/
 user_docs/
 __pycache__/
 tmp/*.cklb
+tmp/Evaluate-STIG*
