@@ -201,15 +201,15 @@ def render_file_list(stdscr, title, files, selected, current_idx, scroll_offset=
             
             # Current item highlight
             if idx == current_idx:
-                stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+                stdscr.attron(curses.color_pair(8) | curses.A_BOLD)
                 prefix = f" {ARROW_RIGHT} {checkbox} "
                 stdscr.addstr(y_pos, 3, prefix)
-                stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+                stdscr.attroff(curses.color_pair(8) | curses.A_BOLD)
                 
-                stdscr.attron(curses.color_pair(1))
+                stdscr.attron(curses.color_pair(8))
                 text = file_name[:list_width - 12]
                 stdscr.addstr(y_pos, 3 + len(prefix), text)
-                stdscr.attroff(curses.color_pair(1))
+                stdscr.attroff(curses.color_pair(8))
             else:
                 # Normal item
                 color = 6 if is_selected else 8
@@ -225,6 +225,11 @@ def render_file_list(stdscr, title, files, selected, current_idx, scroll_offset=
     # Status bar with instructions
     help_text = "↑↓: Navigate  SPACE: Select  ENTER: Confirm  Q: Cancel"
     draw_status_bar(stdscr, help_text, "info")
+
+    try:
+        stdscr.refresh()
+    except curses.error:
+        pass
 
 def show_progress(stdscr, message, progress=None):
     """Show a progress message with optional progress bar."""

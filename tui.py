@@ -37,6 +37,7 @@ from input_validation import (
     validate_version_release, validate_cklb_basic,
     get_safe_path
 )
+from answerfile_manager import load_cklb, extract_non_nf_rules
 from log_config import setup_logging, get_operation_logger
 from web import download_file
 from cklb_handler import (
@@ -59,6 +60,7 @@ FUNCTIONS = {
     "Create Inventory File": "create_inventory_file_tui",
     "Download Options": "download_options_tui",
     "Manage Checklists": "manage_checklists_tui",
+    "Manage Answer File": "manage_answer_file_tui",
     "Automatic CKLB Library Update": "automatic_cklb_library_update_tui",
     # Example: "Set Download Directory": "set_download_dir",
     # Example: "Toggle File Types": "toggle_file_types",
@@ -538,7 +540,7 @@ def download_selected_inventory_tui(stdscr):
         elif key in [ord('r'), ord('R')]:
             break  # Refresh file list
 
-def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] = None, file_label: str = '.cklb'):
+def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] = None, file_label: str = '.cklb', tooltip: Optional[str] = None):
     """
     Professional terminal-based directory browser for selecting files.
     
@@ -553,7 +555,8 @@ def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] =
     try:
         if start_dir is None:
             start_dir = Path.home()
-        current_dir = Path(start_dir).resolve()
+        current_dir = Path(start_dir).expanduser().resolve()
+        current_dir.mkdir(parents=True, exist_ok=True)
         selected = set()
         current_idx = 0
         scroll_offset = 0
@@ -589,6 +592,18 @@ def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] =
                     current_idx, 
                     scroll_offset
                 )
+                if tooltip:
+                    try:
+                        height, width = stdscr.getmaxyx()
+                        stdscr.attron(curses.color_pair(8))
+                        stdscr.addstr(2, 2, tooltip[:max(0, width - 4)])
+                        stdscr.attroff(curses.color_pair(8))
+                    except curses.error:
+                        pass
+                try:
+                    stdscr.refresh()
+                except curses.error:
+                    pass
                 
                 height = stdscr.getmaxyx()[0]
                 max_lines = height - 10
@@ -651,6 +666,115 @@ def browse_and_select_cklb_files(stdscr, start_dir: Optional[Union[str, Path]] =
         stdscr.refresh()
         stdscr.getch()
         return None
+
+
+def manage_answer_file_tui(stdscr):
+    """
+    TUI flow to inspect CKLB findings that are not 'not_a_finding' for answer file editing.
+    """
+    import textwrap
+    clean_screen(stdscr)
+    artifacts_dir = Path("user_docs") / "cklb_artifacts"
+    start_dir = artifacts_dir if artifacts_dir.exists() and any(artifacts_dir.iterdir()) else Path.cwd()
+    stdscr.addstr(0, 0, "Select a CKLB file to review for Answer File prep:")
+    stdscr.refresh()
+    selection = browse_and_select_cklb_files(
+        stdscr,
+        start_dir=start_dir,
+        file_label='.cklb',
+        tooltip="Navigate directories and select a .cklb to use for answer file prep."
+    )
+    if not selection:
+        return
+    cklb_path = selection[0]
+    if not validate_file_ext(cklb_path, ['.cklb']):
+        show_error_message(stdscr, "Selected file is not a .cklb")
+        return
+
+    try:
+        cklb_data = load_cklb(cklb_path)
+        rules = extract_non_nf_rules(cklb_data)
+    except Exception as exc:
+        logging.error("Failed to load CKLB for answer file view: %s", exc, exc_info=True)
+        show_error_message(stdscr, f"Error loading CKLB: {exc}")
+        return
+
+    if not rules:
+        clean_screen(stdscr)
+        stdscr.addstr(0, 0, "No findings with status other than 'not_a_finding'.")
+        stdscr.addstr(2, 0, "Press any key to return.")
+        stdscr.refresh()
+        stdscr.getch()
+        return
+
+    def build_table_lines(max_width: int) -> list[str]:
+        # Fixed widths for id/status; remaining space split for text columns
+        gid_w = 14
+        status_w = 16
+        padding = 2
+        min_width = max(max_width, 60)
+        remaining = max(min_width - (gid_w + status_w + padding * 4), 30)
+        text_col_base = max(12, remaining // 3)
+        title_w = text_col_base
+        fix_w = text_col_base
+        comments_w = remaining - (title_w + fix_w)
+        comments_w = max(comments_w, 12)
+
+        def wrap_field(val: str, width: int) -> list[str]:
+            return textwrap.wrap(val or "", width) or [""]
+
+        header = (
+            f"{'group_id'.ljust(gid_w)}{' ' * padding}"
+            f"{'status'.ljust(status_w)}{' ' * padding}"
+            f"{'group_title'.ljust(title_w)}{' ' * padding}"
+            f"{'fix_text'.ljust(fix_w)}{' ' * padding}"
+            f"{'comments'.ljust(comments_w)}"
+        )
+        sep = "-" * min(len(header), max_width)
+
+        lines = [header[:max_width], sep[:max_width]]
+        for rule in rules:
+            gid_lines = wrap_field(str(rule.get("group_id", "")), gid_w)
+            status_lines = wrap_field(str(rule.get("status", "")), status_w)
+            title_lines = wrap_field(str(rule.get("group_title", "")), title_w)
+            fix_lines = wrap_field(str(rule.get("fix_text", "")), fix_w)
+            comment_lines = wrap_field(str(rule.get("comments", "")), comments_w)
+            max_lines = max(len(gid_lines), len(status_lines), len(title_lines), len(fix_lines), len(comment_lines))
+            for idx in range(max_lines):
+                line = (
+                    f"{(gid_lines[idx] if idx < len(gid_lines) else '').ljust(gid_w)}{' ' * padding}"
+                    f"{(status_lines[idx] if idx < len(status_lines) else '').ljust(status_w)}{' ' * padding}"
+                    f"{(title_lines[idx] if idx < len(title_lines) else '').ljust(title_w)}{' ' * padding}"
+                    f"{(fix_lines[idx] if idx < len(fix_lines) else '').ljust(fix_w)}{' ' * padding}"
+                    f"{(comment_lines[idx] if idx < len(comment_lines) else '').ljust(comments_w)}"
+                )
+                lines.append(line[:max_width])
+        return lines
+
+    lines = build_table_lines(curses.COLS - 1)
+    try:
+        # Ensure neutral background for this view
+        stdscr.bkgd(' ', curses.color_pair(8))
+    except curses.error:
+        pass
+    pos = 0
+    while True:
+        stdscr.clear()
+        max_lines = curses.LINES - 2
+        for i in range(max_lines):
+            if pos + i < len(lines):
+                stdscr.addstr(i, 0, lines[pos + i][:curses.COLS-1])
+        draw_status_bar(stdscr, "UP/DOWN: scroll  q: back", "info")
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key == curses.KEY_UP:
+            if pos > 0:
+                pos -= 1
+        elif key == curses.KEY_DOWN:
+            if pos + max_lines < len(lines):
+                pos += 1
+        elif key in [ord('q'), ord('Q'), ord('b'), ord('B')]:
+            break
 
 def automatic_cklb_library_update_tui(stdscr):
     """
