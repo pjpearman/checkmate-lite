@@ -1,5 +1,3 @@
-# ⚠️ Warning: Another round of changes on the DISA STIG Library website impacted the ability to download new checklists. Working to identify and implement a solution. 
-
 # CheckMate-Lite
 
 CheckMate-Lite is a lightweight toolkit for working with Security Technical Implementation Guide (STIG) content, focusing on the creation, management, and review of checklist bundles (CKLB files). It provides a simple menu driven terminal user interface for interacting with STIG checklists.
@@ -10,6 +8,7 @@ CheckMate-Lite is a lightweight toolkit for working with Security Technical Impl
 - **Convert STIG XCCDF XML to CKLB**: Easily generate `.cklb` files from official DISA STIG XMLs using `create_cklb.py`.
 - **Inventory Management**: Create and manage inventories of available checklists with `create_inventory.py`.
 - **Terminal User Interface (TUI)**: Review and update checklists in a terminal environment via `tui.py`.
+- **Answer File Editing**: Update CKLB findings (status/comments) and save overrides into schema-compliant AnswerFile XMLs.
 - **CKLB Version Management**: Compare and upgrade CKLB files between different STIG versions.
 
 ## Directory Structure
@@ -36,6 +35,7 @@ Download Options                      # Top-level menu item
   |- Download Using Inventory File    # Download .zips listed in inv file.
     |- Create CKLB                    # Creates CKLB. Discards .zip
     |- Download Zip Only              # Downloads zip to user_docs/zip_files
+Manage Answer File                    # Edit CKLB findings (status/comments) and write to AnswerFile XML
 Manage Checklists                     # Top-level menu item
   |- Import CKLB(s)                   # Import user's completed cklbs
   |- Compare CKLB Versions            # Compares rules diff between version A & B
