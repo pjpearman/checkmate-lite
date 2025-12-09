@@ -752,13 +752,14 @@ def manage_answer_file_tui(stdscr):
         return lines
 
     lines = build_table_lines(curses.COLS - 1)
-    try:
-        # Ensure neutral background for this view
-        stdscr.bkgd(' ', curses.color_pair(8))
-    except curses.error:
-        pass
     pos = 0
     while True:
+        try:
+            # Ensure neutral background for this view on every redraw to prevent blue bleed.
+            stdscr.bkgd(' ', curses.color_pair(0))
+            stdscr.attrset(curses.color_pair(0))
+        except curses.error:
+            pass
         stdscr.clear()
         max_lines = curses.LINES - 2
         for i in range(max_lines):
