@@ -122,10 +122,19 @@ def save_answers_to_answerfile(answerfile_path: Union[str, Path], edits: Iterabl
 
     for edit in edits:
         gid = edit.get("group_id") or edit.get("id")
-        current_status = edit.get("status", "")
-        orig_status = edit.get("orig_status") or edit.get("expected_status") or current_status
-        comments = edit.get("comments", "") or ""
+        current_status = (edit.get("status") or "").strip()
+        orig_status_val = edit.get("orig_status")
+        expected_status_val = edit.get("expected_status")
+        orig_status = (orig_status_val or expected_status_val or current_status or "").strip()
+        comments = (edit.get("comments") or "").strip()
+        orig_comments_val = edit.get("orig_comments")
+        orig_comments = (orig_comments_val or "").strip()
         if not gid:
+            summary["skipped"] += 1
+            continue
+        # Skip unchanged rules when original values are known to avoid clutter
+        has_change_tracking = orig_status_val is not None or expected_status_val is not None or orig_comments_val is not None
+        if has_change_tracking and current_status.lower() == orig_status.lower() and comments == orig_comments:
             summary["skipped"] += 1
             continue
         mapped_expected = map_cklb_status_to_answerfile(orig_status)

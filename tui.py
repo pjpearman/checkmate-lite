@@ -712,6 +712,8 @@ def manage_answer_file_tui(stdscr):
     for r in rules:
         if "orig_status" not in r:
             r["orig_status"] = r.get("status", "")
+        if "orig_comments" not in r:
+            r["orig_comments"] = r.get("comments", "")
 
     allowed_statuses = ["open", "not_a_finding", "not_reviewed", "not_applicable"]
 
