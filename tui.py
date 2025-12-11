@@ -716,6 +716,64 @@ def manage_answer_file_tui(stdscr):
             r["orig_comments"] = r.get("comments", "")
 
     allowed_statuses = ["open", "not_a_finding", "not_reviewed", "not_applicable"]
+    target_data = cklb_data.get("target_data") if isinstance(cklb_data, dict) else {}
+    if not isinstance(target_data, dict):
+        target_data = {}
+    stig_info = {}
+    stigs = cklb_data.get("stigs") or []
+    if stigs and isinstance(stigs, list):
+        stig_info = stigs[0] or {}
+    cklb_filename = Path(cklb_path).name
+    table_offset = 0
+
+    def build_target_header_lines(max_width: int) -> list[str]:
+        """Compose compact header lines with target_data context."""
+        width = max(30, max_width)
+        lines_out: list[str] = []
+
+        stig_parts = []
+        stig_name = stig_info.get("display_name") or stig_info.get("stig_name")
+        if stig_name:
+            stig_parts.append(stig_name)
+        release_info = stig_info.get("release_info")
+        if release_info:
+            stig_parts.append(release_info)
+        stig_parts.append(f"File: {cklb_filename}")
+        lines_out.append(" | ".join(stig_parts)[:width])
+
+        primary_target = (
+            target_data.get("host_name")
+            or target_data.get("fqdn")
+            or target_data.get("ip_address")
+            or "Unknown target"
+        )
+
+        def append_pairs(pairs):
+            text = " | ".join(f"{label}: {val}" for label, val in pairs if val)
+            if text:
+                wrapped = textwrap.wrap(text, width=width)
+                lines_out.extend(wrapped if wrapped else [text])
+
+        append_pairs(
+            [
+                ("Target", primary_target),
+                ("Type", target_data.get("target_type")),
+                ("Role", target_data.get("role")),
+                ("Tech", target_data.get("technology_area")),
+            ]
+        )
+        append_pairs(
+            [
+                ("IP", target_data.get("ip_address")),
+                ("FQDN", target_data.get("fqdn")),
+                ("MAC", target_data.get("mac_address")),
+            ]
+        )
+        if not target_data:
+            lines_out.append("Target metadata not provided in target_data.")
+        help_line = "Header shows target_data so you can confirm you're editing the right target."
+        lines_out.append(textwrap.shorten(help_line, width=width, placeholder="..."))
+        return lines_out
 
     def build_table_lines(max_width: int):
         # Fixed widths for id/status; remaining space split for text columns
@@ -803,6 +861,7 @@ def manage_answer_file_tui(stdscr):
         if target_pos != pos:
             pos = target_pos
         y, x = get_cell_screen_pos(current_row, col_name, pos, row_starts, col_spans)
+        y += table_offset
         width_lim = max(1, col_spans[col_name][1] - col_spans[col_name][0] - 1)
         buf = list(current_text or "")
         # Viewport so we can start at the end of existing text
@@ -899,6 +958,7 @@ def manage_answer_file_tui(stdscr):
         if target_pos != pos:
             pos = target_pos
         y, x = get_cell_screen_pos(current_row, "status", pos, row_starts, col_spans)
+        y += table_offset
         current_lower = (current_status or "").lower()
         sel = allowed_statuses.index(current_lower) if current_lower in allowed_statuses else 0
 
@@ -982,6 +1042,7 @@ def manage_answer_file_tui(stdscr):
         if target_pos != pos:
             pos = target_pos
         y, x = get_cell_screen_pos(current_row, "comments", pos, row_starts, col_spans)
+        y += table_offset
         span = col_spans.get("comments", (x, x + 20))
         win_width = min(max((span[1] - span[0]) + 4, 40), curses.COLS - 2)
         win_height = min(max(6, len(current_text.splitlines()) + 3), max(6, curses.LINES - 4))
@@ -1029,7 +1090,8 @@ def manage_answer_file_tui(stdscr):
         return res.rstrip('\n'), pos
 
     # Initial render data
-    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
+    _, screen_width = stdscr.getmaxyx()
+    lines, line_rows, row_starts, col_spans = build_table_lines(screen_width - 1)
     pos = 0
     current_row = 0
     current_col = "status"  # or "comments"
@@ -1040,13 +1102,26 @@ def manage_answer_file_tui(stdscr):
         pass
 
     while True:
+        height, width = stdscr.getmaxyx()
+        header_lines = build_target_header_lines(width - 1)
+        table_offset = len(header_lines) + 1
         try:
             stdscr.bkgd(' ', curses.color_pair(0))
             stdscr.attrset(curses.color_pair(0))
         except curses.error:
             pass
         stdscr.clear()
-        max_lines = curses.LINES - 3  # leave room for status bar
+        max_lines = max(1, height - table_offset - 3)  # leave room for header and status bar
+        for idx, hline in enumerate(header_lines):
+            try:
+                attr = curses.A_BOLD if idx == 0 else curses.A_DIM
+                stdscr.addstr(idx, 0, hline[:width-1], attr)
+            except curses.error:
+                pass
+        try:
+            stdscr.hline(table_offset - 1, 0, "-", max(1, width - 1))
+        except curses.error:
+            pass
         # Render lines with highlight for current row/column
         for i in range(max_lines):
             line_idx = pos + i
@@ -1054,30 +1129,32 @@ def manage_answer_file_tui(stdscr):
                 break
             line = lines[line_idx]
             row_idx = line_rows[line_idx]
+            render_y = table_offset + i
             try:
                 if row_idx == current_row:
                     stdscr.attron(curses.A_BOLD)
-                    stdscr.addstr(i, 0, line[:curses.COLS-1])
+                    stdscr.addstr(render_y, 0, line[:width-1])
                     stdscr.attroff(curses.A_BOLD)
                     span = col_spans.get(current_col)
                     if span:
                         start, end = span
-                        width_lim = curses.COLS - 1
+                        width_lim = width - 1
                         if start < width_lim:
                             seg = line[start:min(end, width_lim)]
                             stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
-                            stdscr.addstr(i, start, seg)
+                            stdscr.addstr(render_y, start, seg)
                             stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
                 else:
-                    stdscr.addstr(i, 0, line[:curses.COLS-1])
+                    stdscr.addstr(render_y, 0, line[:width-1])
             except curses.error:
                 pass
 
         # Place cursor at active cell start if visible
         cy, cx = get_cell_screen_pos(current_row, current_col, pos, row_starts, col_spans)
-        if 0 <= cy < max_lines and cx < curses.COLS - 1 and cy >= 0:
+        cy_screen = cy + table_offset
+        if 0 <= cy < max_lines and cx < width - 1 and cy_screen >= 0:
             try:
-                stdscr.move(cy, cx)
+                stdscr.move(cy_screen, cx)
             except curses.error:
                 pass
 
@@ -1114,13 +1191,13 @@ def manage_answer_file_tui(stdscr):
                 new_status, pos = select_status_dropdown(rules[current_row].get("status", ""), pos, max_lines, row_starts, col_spans)
                 if new_status:
                     rules[current_row]["status"] = new_status
-                    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
+                    lines, line_rows, row_starts, col_spans = build_table_lines(width - 1)
                     pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
             else:
                 new_comment, pos = edit_comments_popup(rules[current_row].get("comments", ""), pos, max_lines, row_starts, col_spans)
                 if new_comment is not None:
                     rules[current_row]["comments"] = new_comment
-                    lines, line_rows, row_starts, col_spans = build_table_lines(curses.COLS - 1)
+                    lines, line_rows, row_starts, col_spans = build_table_lines(width - 1)
                     pos = ensure_row_visible(current_row, pos, max_lines, row_starts, len(lines))
         elif key in [ord('s'), ord('S')]:
             # Prompt for save target
